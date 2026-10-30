@@ -32,6 +32,7 @@ from app.ai.llm import (
 )
 from app.ai.needs_extractor import extract_need_detailed
 from app.schemas.contracts import CircleSnapshot
+from pydantic import BaseModel
 
 # Shape of the real Gemini error (abridged from a live 429 on the free tier).
 GOOGLE_DAILY_429 = (
@@ -518,3 +519,131 @@ async def test_p3_extractor_falls_back_to_rules_when_the_client_raises(
     result = await extract_need_detailed(NEED_TEXT, "en", CIRCLE, make_client("a"))
     assert result.source == "rules"
     assert any("LLMUnavailable" in n for n in result.notes)
+
+
+# --- retry, timeout and failover policy ---------------------------------------------------
+
+
+class FlakyProvider(Provider):
+    """Raises ``exc`` for the first ``failures`` calls, then succeeds."""
+
+    def __init__(self, name: str, exc: BaseException, failures: int) -> None:
+        super().__init__(name, exc=exc)
+        self._failures = failures
+
+    async def __call__(self, timeout: float) -> str:
+        self.calls += 1
+        self.timeouts.append(timeout)
+        if self.calls <= self._failures:
+            raise self._exc  # type: ignore[misc]
+        return self._result
+
+
+@pytest.mark.asyncio
+async def test_transient_429_retried_once() -> None:
+    flaky = FlakyProvider("gemini:a", APIError(503, "high demand"), failures=1)
+    assert await run([flaky]) == "ok"
+    assert flaky.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_transient_error_retries_only_once_then_fails_over() -> None:
+    always_503 = Provider("gemini:a", exc=APIError(503, "high demand"))
+    backup = Provider("gemini:b")
+    assert await run([always_503, backup]) == "ok"
+    assert (always_503.calls, backup.calls) == (2, 1)
+
+
+@pytest.mark.asyncio
+async def test_per_minute_429_is_retried_once() -> None:
+    flaky = FlakyProvider("gemini:a", APIError(429, GOOGLE_MINUTE_429), failures=1)
+    assert await run([flaky]) == "ok"
+    assert flaky.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_skipped_when_budget_cannot_fit_it() -> None:
+    always_503 = Provider("gemini:a", exc=APIError(503, "high demand"))
+    # retry needs retry_delay + min_slot = 1.4 s, but only ~1.0 s of budget exists
+    result = await run(
+        [always_503], budget_seconds=1.0, provider_timeout=1.0, retry_delay=0.9, min_slot=0.5
+    )
+    assert result is None
+    assert always_503.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_timeout_not_retried() -> None:
+    hang = Provider("gemini:a", delay=5.0)
+    backup = Provider("gemini:b")
+    assert await run([hang, backup], budget_seconds=2.0, provider_timeout=0.1) == "ok"
+    assert (hang.calls, backup.calls) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_non_transient_error_is_not_retried() -> None:
+    bad = Provider("gemini:a", exc=APIError(400, "bad request"))
+    assert await run([bad]) is None
+    assert bad.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_failover_uses_backup_after_primary_error() -> None:
+    primary = Provider("gemini:a", exc=RuntimeError("boom"))
+    backup = Provider("gemini:b", result="from-backup")
+    assert await run([primary, backup]) == "from-backup"
+    assert (primary.calls, backup.calls) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_all_fail_returns_none() -> None:
+    a = Provider("gemini:a", exc=RuntimeError("boom"))
+    b = Provider("gemini:b", exc=RuntimeError("boom"))
+    assert await run([a, b]) is None
+    assert (a.calls, b.calls) == (1, 1)
+
+
+@pytest.mark.asyncio
+async def test_daily_quota_marks_and_skips_model() -> None:
+    out = Provider("gemini:a", exc=APIError(429, GOOGLE_DAILY_429))
+    assert await run([out]) is None
+    assert is_quota_exhausted("gemini:a")
+    assert await run([out]) is None
+    assert out.calls == 1
+
+
+# --- GeminiModel.generate_json (Pydantic schema class) -------------------------------------
+
+
+class Verdict(BaseModel):
+    category: str
+
+
+@pytest.mark.asyncio
+async def test_generate_json_validates_into_the_schema_class(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["m"] = json.dumps({"category": "RENT"})
+    out = await GeminiModel("key", "m").generate_json("system", "user", Verdict)
+    assert out == Verdict(category="RENT")
+    config = text_genai.configs[0]
+    assert config.system_instruction == "system"
+    assert config.response_schema is Verdict
+
+
+@pytest.mark.asyncio
+async def test_generate_json_empty_response_raises(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["m"] = ""
+    with pytest.raises(EmptyModelResponse):
+        await GeminiModel("key", "m").generate_json("system", "user", Verdict)
+
+
+@pytest.mark.asyncio
+async def test_generate_json_invalid_payload_raises(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["m"] = json.dumps({"wrong": 1})
+    with pytest.raises(ValueError):
+        await GeminiModel("key", "m").generate_json("system", "user", Verdict)
