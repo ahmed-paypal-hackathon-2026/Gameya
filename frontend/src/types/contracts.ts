@@ -85,7 +85,7 @@ export type ChatRole = "user" | "assistant" | "system";
 
 export type SwapStatus = "proposed" | "accepted" | "declined" | "applied";
 
-export type ChaseAction = "noop" | "nudge" | "invoice";
+export type ChaseAction = "noop" | "nudge" | "invoice" | "reminder";
 
 export type SanityStatus = "healthy" | "degraded" | "down";
 
@@ -258,6 +258,13 @@ export interface ChasePlan {
   invoice_amount: string | null;
   invoice_note: string | null;
   agent_decision: AgentDecision | null;
+  plan_id?: string | null;
+  contribution_id?: string | null;
+  recipient_email?: string | null;
+  locale?: Locale;
+  invoice_number?: string | null;
+  invoice_id?: string | null;
+  message_source?: "gemini" | "template" | null;
 }
 
 export interface MediationOption {

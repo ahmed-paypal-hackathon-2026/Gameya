@@ -198,6 +198,7 @@ class ChaseAction(StrEnum):
     NOOP = "noop"
     NUDGE = "nudge"
     INVOICE = "invoice"
+    REMINDER = "reminder"
 
 
 class SanityStatus(StrEnum):
@@ -417,6 +418,13 @@ class ChasePlan(StrictModel):
     invoice_amount: PositiveMoney | None = None
     invoice_note: str | None = Field(default=None, max_length=1000)
     agent_decision: AgentDecision | None = None
+    plan_id: str | None = None
+    contribution_id: str | None = None
+    recipient_email: str | None = None
+    locale: Locale = "en"
+    invoice_number: str | None = None
+    invoice_id: str | None = None
+    message_source: Literal["gemini", "template"] | None = None
 
     @model_validator(mode="after")
     def _shape(self) -> ChasePlan:
@@ -427,6 +435,11 @@ class ChasePlan(StrictModel):
                 raise ValueError("invoice action requires invoice_amount")
             if self.invoice_note is None:
                 raise ValueError("invoice action requires invoice_note")
+        if self.action is ChaseAction.REMINDER:
+            if not self.invoice_id:
+                raise ValueError("reminder action requires invoice_id")
+            if self.invoice_note is None:
+                raise ValueError("reminder action requires invoice_note")
         return self
 
     def assert_within_contribution(self, contribution_amount: Decimal) -> None:
