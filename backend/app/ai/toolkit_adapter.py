@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Literal, Protocol
 from uuid import NAMESPACE_DNS, uuid5
 
@@ -46,6 +46,7 @@ __all__ = [
 ]
 
 _CENT = Decimal("0.01")
+_MONEY_RE = re.compile(r"[0-9]+(\.[0-9]{1,2})?")
 _SAFE_ARG_MAX_CHARS = 64
 
 
@@ -189,12 +190,9 @@ def _normalise_money(node: Any) -> Any:
         out: dict[str, Any] = {}
         for key, val in node.items():
             if key == "value":
-                try:
-                    dec = Decimal(str(val))
-                except InvalidOperation as exc:
-                    raise ValueError("malformed money value") from exc
-                if not dec.is_finite():
-                    raise ValueError("malformed money value")
+                if not isinstance(val, str) or _MONEY_RE.fullmatch(val) is None:
+                    raise ValueError("non-canonical money value")
+                dec = Decimal(val)
                 out[key] = str(dec.quantize(_CENT, rounding=ROUND_HALF_UP))
             else:
                 out[key] = _normalise_money(val)
@@ -207,7 +205,7 @@ def _normalise_money(node: Any) -> Any:
 def binding_view(params: BaseModel) -> dict[str, Any]:
     """JSON dump with every nested `value` money field quantised to 0.01.
 
-    Raises `ValueError` on a non-numeric money value.
+    Raises `ValueError` unless every money value is plain digits with up to 2 decimals.
     """
     view: dict[str, Any] = _normalise_money(params.model_dump(mode="json"))
     return view
@@ -221,6 +219,10 @@ def validate_tool_plan(
 
     A canonical `None` means the engine fills the arguments from an earlier
     step (such as `product_id`), so only the name is checked. Never raises.
+
+    The result is only a gate that labels a model's plan. Callers always
+    execute the engine-built params, never the proposed ones. Money values
+    must be plain `digits[.dd]` strings; anything else is rejected.
     """
     try:
         if not calls or len(calls) > len(canonical):

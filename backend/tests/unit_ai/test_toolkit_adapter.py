@@ -111,7 +111,10 @@ def test_validate_plan_rejects_altered_setup_fee_and_nested_value() -> None:
     assert not validate_tool_plan([_call("create_subscription_plan", no_fee)], canon)
 
 
-@pytest.mark.parametrize("bad", ["abc", "", "NaN", "Infinity"])
+@pytest.mark.parametrize(
+    "bad",
+    ["abc", "", "NaN", "Infinity", "100.004", " 100.00 ", "+100", "1_00", "100.00\n", "-5", "1e2"],
+)
 def test_validate_plan_malformed_money_returns_false(bad: str) -> None:
     canon = [("create_subscription_plan", _plan())]
     assert validate_tool_plan([_call("create_subscription_plan", _plan_dict(bad))], canon) is False
@@ -131,6 +134,23 @@ def test_validate_plan_rejects_wrong_order_extra_fields_unknown_tool() -> None:
     assert not validate_tool_plan([extra], canon)
     assert not validate_tool_plan([_call("create_payout", {})], [("create_payout", None)])
     assert not validate_tool_plan([_call("create_product", {"nope": 1})], canon)
+
+
+def test_validate_plan_rejects_altered_threshold_and_failure_action() -> None:
+    canon = [("create_subscription_plan", _plan())]
+    bad = _plan_dict()
+    bad["payment_preferences"]["payment_failure_threshold"] = 3
+    assert not validate_tool_plan([_call("create_subscription_plan", bad)], canon)
+    bad = _plan_dict()
+    bad["payment_preferences"]["setup_fee_failure_action"] = "CONTINUE"
+    assert not validate_tool_plan([_call("create_subscription_plan", bad)], canon)
+
+
+def test_validate_invoice_rejects_altered_invoice_number() -> None:
+    inv = CreateInvoiceParameters.model_validate(_invoice_dict())
+    bad = _invoice_dict()
+    bad["invoice_number"] = "GM-0123456789-R2"
+    assert not validate_tool_plan([_call("create_invoice", bad)], [("create_invoice", inv)])
 
 
 def test_validate_plan_none_canonical_checks_name_only() -> None:
