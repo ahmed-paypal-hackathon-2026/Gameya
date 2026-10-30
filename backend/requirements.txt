@@ -7,3 +7,4 @@ numpy>=1.26
 scipy>=1.14
 scikit-learn>=1.5
 paypal-agent-toolkit==1.11.0  # verified with the P3 suite; bump deliberately
+google-genai==2.33.0
