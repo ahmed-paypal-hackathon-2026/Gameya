@@ -13,6 +13,7 @@ last available model may use the whole remaining budget instead of the per-model
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -54,6 +55,10 @@ class ToolCall:
 
     name: str
     args: dict[str, Any]
+
+
+class LLMUnavailable(RuntimeError):
+    """No model produced a usable answer (no key, quota, timeout, bad output)."""
 
 
 class JsonModel(Protocol):
@@ -106,6 +111,50 @@ class GeminiModel:
         if not response.text:
             raise EmptyModelResponse(f"{self.name} returned an empty response")
         return schema.model_validate_json(response.text)
+
+    async def generate_schema_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        """JSON object constrained by a plain JSON-schema dict (``response_json_schema``).
+
+        Raises on an empty reply, invalid JSON or JSON that is not an object."""
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=self._api_key)
+        response = await client.aio.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_json_schema=schema,
+                temperature=0.0,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        if not response.text:
+            raise EmptyModelResponse(f"{self.name} returned an empty response")
+        data = json.loads(response.text)
+        if not isinstance(data, dict):
+            raise ValueError(f"{self.name} returned JSON that is not an object")
+        return data
+
+    async def generate_text(self, prompt: str) -> str:
+        """Plain prose, stripped. Raises on an empty reply."""
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=self._api_key)
+        response = await client.aio.models.generate_content(
+            model=self.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        text = (response.text or "").strip()
+        if not text:
+            raise EmptyModelResponse(f"{self.name} returned an empty response")
+        return text
 
     async def generate_tool_calls(
         self,
@@ -303,3 +352,54 @@ async def run_with_failover(
                     continue
                 break
     return None
+
+
+class GeminiLLMClient:
+    """Person 3's ``LLMClient`` port over the Gemini chain.
+
+    Every failure raises ``LLMUnavailable`` (never ``None`` or ``{}``), so callers fall
+    back to their deterministic path. One call per invocation, to spare the free quota.
+    """
+
+    BUDGET_SECONDS = 7.5  # under the callers' LLM_TIMEOUT_S of 8.0
+    PROVIDER_TIMEOUT_SECONDS = 4.0
+
+    def __init__(self, models: Sequence[GeminiModel]) -> None:
+        self._models = list(models)
+        self._answered: str | None = None
+
+    @property
+    def model_name(self) -> str:
+        """The last model that answered, else the primary (``gemini:<model>``)."""
+        if self._answered:
+            return self._answered
+        return self._models[0].name if self._models else f"gemini:{DEFAULT_GEMINI_MODEL}"
+
+    async def _run(self, purpose: str, call: Callable[[GeminiModel], Awaitable[T]]) -> T:
+        async def attempt(model: GeminiModel, _timeout: float) -> T:
+            result = await call(model)
+            self._answered = model.name
+            return result
+
+        outcome = await run_with_failover(
+            self._models,
+            attempt,
+            purpose=purpose,
+            budget_seconds=self.BUDGET_SECONDS,
+            provider_timeout=self.PROVIDER_TIMEOUT_SECONDS,
+        )
+        if outcome is None:
+            raise LLMUnavailable(f"{purpose}: no Gemini model produced a usable answer")
+        return outcome
+
+    async def generate_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+        return await self._run("generate_json", lambda m: m.generate_schema_json(prompt, schema))
+
+    async def generate_text(self, prompt: str) -> str:
+        return await self._run("generate_text", lambda m: m.generate_text(prompt))
+
+
+def default_llm_client() -> GeminiLLMClient | None:
+    """The shared client, or ``None`` when no real ``GEMINI_API_KEY`` is configured."""
+    models = default_models()
+    return GeminiLLMClient(models) if models else None

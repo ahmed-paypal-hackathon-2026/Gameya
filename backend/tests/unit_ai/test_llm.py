@@ -3,19 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from datetime import date
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from app.ai._llm_port import LLM_TIMEOUT_S, LLMClient
 from app.ai.llm import (
     DEFAULT_QUOTA_COOLDOWN_SECONDS,
     EmptyModelResponse,
+    GeminiLLMClient,
     GeminiModel,
     JsonModel,
+    LLMUnavailable,
     ToolCall,
     ToolPlanModel,
     daily_quota_reset_seconds,
+    default_llm_client,
     default_models,
     gemini_models_from_env,
     is_quota_exhausted,
@@ -23,6 +30,8 @@ from app.ai.llm import (
     reset_quota_state,
     run_with_failover,
 )
+from app.ai.needs_extractor import extract_need_detailed
+from app.schemas.contracts import CircleSnapshot
 
 # Shape of the real Gemini error (abridged from a live 429 on the free tier).
 GOOGLE_DAILY_429 = (
@@ -332,3 +341,180 @@ def test_gemini_model_satisfies_the_agent_protocols() -> None:
     as_json: JsonModel = model
     as_tools: ToolPlanModel = model
     assert as_json.name == as_tools.name == "gemini:gemini-test"
+
+
+# --- schema JSON and plain text ------------------------------------------------------------
+
+SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"category": {"type": "string"}},
+    "required": ["category"],
+}
+
+
+class TextGenaiClient:
+    """Fake ``google.genai.Client`` whose reply depends on the requested model."""
+
+    configs: list[Any] = []
+    replies: dict[str, Any] = {}  # model -> text, or an Exception to raise
+    models_called: list[str] = []
+
+    def __init__(self, api_key: str) -> None:
+        self.aio = SimpleNamespace(models=SimpleNamespace(generate_content=self._generate))
+
+    async def _generate(self, *, model: str, contents: str, config: Any) -> Any:
+        TextGenaiClient.configs.append(config)
+        TextGenaiClient.models_called.append(model)
+        reply = TextGenaiClient.replies.get(model, "")
+        if isinstance(reply, Exception):
+            raise reply
+        return SimpleNamespace(text=reply)
+
+
+@pytest.fixture
+def text_genai(monkeypatch: pytest.MonkeyPatch) -> type[TextGenaiClient]:
+    TextGenaiClient.configs = []
+    TextGenaiClient.replies = {}
+    TextGenaiClient.models_called = []
+    monkeypatch.setattr("google.genai.Client", TextGenaiClient)
+    return TextGenaiClient
+
+
+@pytest.mark.asyncio
+async def test_generate_schema_json_sends_json_schema_and_returns_dict(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["m"] = json.dumps({"category": "WEDDING"})
+    out = await GeminiModel("key", "m").generate_schema_json("prompt", SCHEMA)
+    assert out == {"category": "WEDDING"}
+    config = text_genai.configs[0]
+    assert config.response_json_schema == SCHEMA
+    assert config.response_mime_type == "application/json"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["", "not json", "[1, 2]", '"text"', "null"])
+async def test_generate_schema_json_rejects_empty_invalid_or_non_object(
+    text_genai: type[TextGenaiClient], reply: str
+) -> None:
+    text_genai.replies["m"] = reply
+    with pytest.raises((EmptyModelResponse, ValueError)):
+        await GeminiModel("key", "m").generate_schema_json("prompt", SCHEMA)
+
+
+@pytest.mark.asyncio
+async def test_generate_text_returns_prose_and_rejects_empty(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["m"] = "  Hello there.  "
+    assert await GeminiModel("key", "m").generate_text("prompt") == "Hello there."
+    text_genai.replies["m"] = "   "
+    with pytest.raises(EmptyModelResponse):
+        await GeminiModel("key", "m").generate_text("prompt")
+
+
+# --- GeminiLLMClient (the P3 port) ------------------------------------------------------------
+
+
+def make_client(*names: str) -> GeminiLLMClient:
+    return GeminiLLMClient([GeminiModel("key", n) for n in names])
+
+
+def test_client_satisfies_the_p3_protocol_and_budget_is_under_p3_timeout() -> None:
+    client: LLMClient = make_client("a")
+    assert client.model_name == "gemini:a"
+    assert GeminiLLMClient.BUDGET_SECONDS == 7.5 < LLM_TIMEOUT_S
+
+
+@pytest.mark.asyncio
+async def test_client_generate_json_and_text_report_the_answering_model(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["a"] = RuntimeError("down")
+    text_genai.replies["b"] = json.dumps({"category": "RENT"})
+    client = make_client("a", "b")
+    assert client.model_name == "gemini:a"  # nothing has answered yet
+    assert await client.generate_json("p", SCHEMA) == {"category": "RENT"}
+    assert client.model_name == "gemini:b"
+    text_genai.replies["b"] = "prose"
+    assert await client.generate_text("p") == "prose"
+
+
+@pytest.mark.asyncio
+async def test_client_raises_unavailable_when_every_model_fails(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["a"] = RuntimeError("down")
+    text_genai.replies["b"] = ""
+    client = make_client("a", "b")
+    with pytest.raises(LLMUnavailable):
+        await client.generate_json("p", SCHEMA)
+    with pytest.raises(LLMUnavailable):
+        await client.generate_text("p")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["[1]", "null", "plain words"])
+async def test_client_raises_on_non_object_json_instead_of_returning_it(
+    text_genai: type[TextGenaiClient], reply: str
+) -> None:
+    text_genai.replies["a"] = reply
+    with pytest.raises(LLMUnavailable):
+        await make_client("a").generate_json("p", SCHEMA)
+
+
+@pytest.mark.asyncio
+async def test_client_without_models_raises_unavailable() -> None:
+    with pytest.raises(LLMUnavailable):
+        await GeminiLLMClient([]).generate_json("p", SCHEMA)
+
+
+def test_default_llm_client_is_none_without_a_real_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert default_llm_client() is None
+    monkeypatch.setenv("GEMINI_API_KEY", "your_key")
+    assert default_llm_client() is None
+    monkeypatch.setenv("GEMINI_API_KEY", "real")
+    assert isinstance(default_llm_client(), GeminiLLMClient)
+
+
+# --- through Person 3's real consumer ------------------------------------------------------------
+
+CIRCLE = CircleSnapshot(
+    circle_id="c1",
+    name="Circle",
+    contribution_amount=Decimal(100),
+    cycle_unit="MONTH",
+    size_n=6,
+    start_date=date(2026, 11, 1),
+)
+NEED_TEXT = "I need $600 for a wedding in March"
+NEED_JSON = {
+    "category": "WEDDING",
+    "target_date": "2027-03-01",
+    "amount_needed": "600",
+    "urgency": 3,
+    "flexibility": "low",
+    "confidence": 0.9,
+}
+
+
+@pytest.mark.asyncio
+async def test_p3_extractor_uses_the_gemini_client_on_success(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["a"] = json.dumps(NEED_JSON)
+    result = await extract_need_detailed(NEED_TEXT, "en", CIRCLE, make_client("a"))
+    assert result.source == "llm"
+    assert result.model == "gemini:a"
+    assert result.need.category == "WEDDING"
+
+
+@pytest.mark.asyncio
+async def test_p3_extractor_falls_back_to_rules_when_the_client_raises(
+    text_genai: type[TextGenaiClient],
+) -> None:
+    text_genai.replies["a"] = RuntimeError("quota")
+    result = await extract_need_detailed(NEED_TEXT, "en", CIRCLE, make_client("a"))
+    assert result.source == "rules"
+    assert any("LLMUnavailable" in n for n in result.notes)
