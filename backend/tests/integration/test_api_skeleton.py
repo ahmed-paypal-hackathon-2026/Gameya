@@ -8,12 +8,16 @@ from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/opencode/gameya-p1a-test.db")
+_DB_DIR = Path(__file__).resolve().parents[1] / ".pytest-db"  # backend/.pytest-db
+_DB_DIR.mkdir(exist_ok=True)
+for _leftover in ("gameya.db", "gameya.db-wal", "gameya.db-shm"):
+    (_DB_DIR / _leftover).unlink(missing_ok=True)
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_DB_DIR / 'gameya.db'}")
 
-from app.main import create_app  # noqa: E402 after env seeding
-from fastapi.testclient import TestClient
+from app.main import create_app  # noqa: E402  (imports must follow env seeding)
+from fastapi.testclient import TestClient  # noqa: E402
 
-from ..fixtures import fixture_json
+from ..fixtures import fixture_json  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "shared" / "fixtures" / "json"
 
