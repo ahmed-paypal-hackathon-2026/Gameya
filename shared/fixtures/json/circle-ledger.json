@@ -1,0 +1,234 @@
+{
+  "circle_id": "circle-golden-01",
+  "rows": [
+    {
+      "row_id": "row-c0-amina",
+      "cycle_index": 0,
+      "member_id": "mem-amina",
+      "member_name": "Amina",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C0A1MINA01",
+      "created_at": "2026-11-01T08:04:00Z"
+    },
+    {
+      "row_id": "row-c0-omar",
+      "cycle_index": 0,
+      "member_id": "mem-omar",
+      "member_name": "Omar",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C0OMAR90X2",
+      "created_at": "2026-11-01T08:07:00Z"
+    },
+    {
+      "row_id": "row-c0-sara",
+      "cycle_index": 0,
+      "member_id": "mem-sara",
+      "member_name": "Sara",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C0SARA11Q3",
+      "created_at": "2026-11-01T08:11:00Z"
+    },
+    {
+      "row_id": "row-c0-youssef",
+      "cycle_index": 0,
+      "member_id": "mem-youssef",
+      "member_name": "Youssef",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C0YOUSS44R4",
+      "created_at": "2026-11-01T08:15:00Z"
+    },
+    {
+      "row_id": "row-c0-lina",
+      "cycle_index": 0,
+      "member_id": "mem-lina",
+      "member_name": "Lina",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C0LINA77T5",
+      "created_at": "2026-11-01T08:19:00Z"
+    },
+    {
+      "row_id": "row-c0-karim",
+      "cycle_index": 0,
+      "member_id": "mem-karim",
+      "member_name": "Karim",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C0KARIM55W6",
+      "created_at": "2026-11-01T08:22:00Z"
+    },
+    {
+      "row_id": "row-c1-amina",
+      "cycle_index": 1,
+      "member_id": "mem-amina",
+      "member_name": "Amina",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C1A1MINA21",
+      "created_at": "2026-12-01T07:58:00Z"
+    },
+    {
+      "row_id": "row-c1-omar",
+      "cycle_index": 1,
+      "member_id": "mem-omar",
+      "member_name": "Omar",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C1OMAR02Y2",
+      "created_at": "2026-12-01T08:05:00Z"
+    },
+    {
+      "row_id": "row-c1-sara",
+      "cycle_index": 1,
+      "member_id": "mem-sara",
+      "member_name": "Sara",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C1SARA43C3",
+      "created_at": "2026-12-01T08:09:00Z"
+    },
+    {
+      "row_id": "row-c1-youssef",
+      "cycle_index": 1,
+      "member_id": "mem-youssef",
+      "member_name": "Youssef",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "order",
+      "paypal_reference": "8MC12345GOLD7890",
+      "created_at": "2026-12-02T10:41:00Z"
+    },
+    {
+      "row_id": "row-c1-lina",
+      "cycle_index": 1,
+      "member_id": "mem-lina",
+      "member_name": "Lina",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C1LINA88T5",
+      "created_at": "2026-12-01T08:14:00Z"
+    },
+    {
+      "row_id": "row-c1-karim",
+      "cycle_index": 1,
+      "member_id": "mem-karim",
+      "member_name": "Karim",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C1KARIM16W6",
+      "created_at": "2026-12-01T08:18:00Z"
+    },
+    {
+      "row_id": "row-c2-amina",
+      "cycle_index": 2,
+      "member_id": "mem-amina",
+      "member_name": "Amina",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C2A1MINA31",
+      "created_at": "2027-01-01T08:01:00Z"
+    },
+    {
+      "row_id": "row-c2-sara",
+      "cycle_index": 2,
+      "member_id": "mem-sara",
+      "member_name": "Sara",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C2SARA04C3",
+      "created_at": "2027-01-01T08:06:00Z"
+    },
+    {
+      "row_id": "row-c2-youssef",
+      "cycle_index": 2,
+      "member_id": "mem-youssef",
+      "member_name": "Youssef",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C2YOUSS22R4",
+      "created_at": "2027-01-01T08:10:00Z"
+    },
+    {
+      "row_id": "row-c2-lina",
+      "cycle_index": 2,
+      "member_id": "mem-lina",
+      "member_name": "Lina",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C2LINA99T5",
+      "created_at": "2027-01-01T08:13:00Z"
+    },
+    {
+      "row_id": "row-c2-karim",
+      "cycle_index": 2,
+      "member_id": "mem-karim",
+      "member_name": "Karim",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "subscription",
+      "paypal_reference": "PAYID-C2KARIM37W6",
+      "created_at": "2027-01-01T08:16:00Z"
+    },
+    {
+      "row_id": "row-c2-omar",
+      "cycle_index": 2,
+      "member_id": "mem-omar",
+      "member_name": "Omar",
+      "amount": "100.00",
+      "status": "paid",
+      "source": "invoice",
+      "paypal_reference": "INV2-GOLD-0112",
+      "created_at": "2027-01-03T09:24:00Z"
+    }
+  ],
+  "payouts": [
+    {
+      "payout_id": "po-c0-sara",
+      "cycle_index": 0,
+      "recipient_id": "mem-amina",
+      "batch_id": "gameya-circle-golden-01-0",
+      "amount": "600.00",
+      "status": "paid_out",
+      "created_at": "2026-11-01T10:00:00Z"
+    },
+    {
+      "payout_id": "po-c1-omar",
+      "cycle_index": 1,
+      "recipient_id": "mem-omar",
+      "batch_id": "gameya-circle-golden-01-1",
+      "amount": "600.00",
+      "status": "paid_out",
+      "created_at": "2026-12-01T10:02:00Z"
+    },
+    {
+      "payout_id": "po-c2-lina",
+      "cycle_index": 2,
+      "recipient_id": "mem-sara",
+      "batch_id": "gameya-circle-golden-01-2",
+      "amount": "600.00",
+      "status": "paid_out",
+      "created_at": "2027-01-03T11:00:00Z"
+    }
+  ],
+  "contributions_total": "1800.00",
+  "paid_out_total": "1800.00"
+}

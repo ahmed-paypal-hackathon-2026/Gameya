@@ -1,0 +1,49 @@
+{
+  "assignments": [
+    {
+      "member_id": "mem-amina",
+      "slot_index": 0,
+      "payout_date": "2026-11-01",
+      "cost": 0.0
+    },
+    {
+      "member_id": "mem-omar",
+      "slot_index": 1,
+      "payout_date": "2026-12-01",
+      "cost": 0.2
+    },
+    {
+      "member_id": "mem-sara",
+      "slot_index": 2,
+      "payout_date": "2027-01-01",
+      "cost": 0.9
+    },
+    {
+      "member_id": "mem-lina",
+      "slot_index": 3,
+      "payout_date": "2027-02-01",
+      "cost": 1.4
+    },
+    {
+      "member_id": "mem-youssef",
+      "slot_index": 4,
+      "payout_date": "2027-03-01",
+      "cost": 3.1
+    },
+    {
+      "member_id": "mem-karim",
+      "slot_index": 5,
+      "payout_date": "2027-04-01",
+      "cost": 4.0
+    }
+  ],
+  "seed": 42,
+  "explanations": {
+    "mem-amina": "Amina, the organiser, takes cycle 1 (1 Nov 2026). She declared no deadline needs and chose to anchor trust by receiving first.",
+    "mem-omar": "Omar receives the pot on 1 Dec 2026, two weeks before his 15 Dec tuition deadline - the engine places payouts just ahead of hard deadlines.",
+    "mem-sara": "Sara receives the pot on 1 Jan 2027. Her recurring rent is paid every month, so any month-end slot covers it; the engine saved the first two slots for harder deadlines.",
+    "mem-lina": "Lina receives the pot on 1 Feb 2027, one full month before her March wedding - deposits land before the ceremony.",
+    "mem-youssef": "Youssef receives the pot on 1 Mar 2027. His need is flexible, so the optimiser charged the least cost for later slots.",
+    "mem-karim": "Karim receives the pot on 1 Apr 2027. With no deadline needs, the deterministic seed 42 tie-break placed him last among the flexible members."
+  }
+}

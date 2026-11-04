@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "decision_id": "lsd_01JC9F",
+      "action": "RELEASE_POT_PAYOUT",
+      "subject_type": "payout",
+      "subject_id": "pay_01JC9E",
+      "cycle_index": 2,
+      "recipient": {
+        "member_id": "mem_01JC4R",
+        "name": "Amina",
+        "payout_email": "amina.new@personal.example.com"
+      },
+      "amount": "600.00",
+      "rule_ids": ["PO-01"],
+      "reason": "Held: Amina's payout email changed yesterday (rule PO-01). Confirm it with Amina before releasing $600.00.",
+      "created_at": "2026-10-28T09:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "member_id": "mem-omar",
+  "category": "EDUCATION",
+  "target_date": "2026-12-15",
+  "amount_needed": null,
+  "urgency": 5,
+  "flexibility": "low",
+  "confidence": 0.93,
+  "raw_month_hint": "ديسمبر"
+}

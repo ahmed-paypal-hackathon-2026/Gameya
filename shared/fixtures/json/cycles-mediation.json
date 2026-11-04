@@ -1,0 +1,26 @@
+[
+  {
+    "option_id": "opt-omar-partial",
+    "kind": "partial_now",
+    "description": "Omar pays $50 today and the remaining $50 within 5 days via a second charge; ledger shows both halves.",
+    "amount": "50.00",
+    "requires_approval": true,
+    "agent_decision": null
+  },
+  {
+    "option_id": "opt-omar-swap",
+    "kind": "swap",
+    "description": "Omar moves his payout slot one cycle later; dated slots stay structurally fair.",
+    "amount": null,
+    "requires_approval": true,
+    "agent_decision": null
+  },
+  {
+    "option_id": "opt-omar-reserve",
+    "kind": "reserve_cover",
+    "description": "The 3% upfront reserve deposit covers the missing $50 this cycle; the deposit is topped up before the next payout.",
+    "amount": "50.00",
+    "requires_approval": true,
+    "agent_decision": null
+  }
+]

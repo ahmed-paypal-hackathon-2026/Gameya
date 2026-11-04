@@ -1,0 +1,10 @@
+{
+  "decision_id": "lsd_01JC9G",
+  "approves": "lsd_01JC9F",
+  "actor": "organiser",
+  "result": {
+    "payout_id": "pay_01JC9E",
+    "status": "PROCESSING",
+    "sender_batch_id": "gameya-pay_01JC9E"
+  }
+}

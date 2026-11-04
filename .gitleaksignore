@@ -1,0 +1,5 @@
+# gitleaks: exclude verified false positives
+# fingerprint format: <commit>:<file>:<rule>:<line>
+# I-1GB976GOLD0123 is fabricated sandbox demo data (join approval URL param),
+# removed from the live fixture; the token only exists in the frozen history.
+d7af12d22e9b736746914ff43fe5523da5032388:shared/fixtures/json/circle-join.json:generic-api-key:5

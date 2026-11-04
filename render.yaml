@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: gameya-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    # backend image includes paypal-agent-toolkit (~170 transitive packages,
+    # langchain etc.) -> large image + heavy imports: plan for >= 2 GB RAM.
+    plan: standard
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: DEMO_MODE
+        value: "1"
+      - key: PAYPAL_API_BASE_URL
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gameya-db
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: https://gameya-web.onrender.com
+
+  - type: web
+    name: gameya-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://gameya-api.onrender.com
+      - key: VITE_USE_MOCKS
+        value: "0"
+
+databases:
+  - name: gameya-db
+    databaseName: gameya
+    plan: basic-256mb

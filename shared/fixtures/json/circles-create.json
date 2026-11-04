@@ -1,0 +1,80 @@
+{
+  "circle": {
+    "circle_id": "circle-golden-01",
+    "spec": {
+      "name": "Golden Circle",
+      "member_count": 6,
+      "contribution_amount": "100.00",
+      "currency": "USD",
+      "start_date": "2026-11-01",
+      "organiser_id": "mem-amina",
+      "purpose": "Group savings among friends",
+      "confirmed": true,
+      "cycle_unit": "MONTH"
+    },
+    "members": [
+      {
+        "member_id": "mem-amina",
+        "display_name": "Amina",
+        "role": "organiser",
+        "subscription_status": "active",
+        "contribution_status": null,
+        "days_late": 0,
+        "p_late": null
+      },
+      {
+        "member_id": "mem-omar",
+        "display_name": "Omar",
+        "role": "member",
+        "subscription_status": "active",
+        "contribution_status": null,
+        "days_late": 0,
+        "p_late": null
+      },
+      {
+        "member_id": "mem-sara",
+        "display_name": "Sara",
+        "role": "member",
+        "subscription_status": "active",
+        "contribution_status": null,
+        "days_late": 0,
+        "p_late": null
+      },
+      {
+        "member_id": "mem-youssef",
+        "display_name": "Youssef",
+        "role": "member",
+        "subscription_status": "active",
+        "contribution_status": null,
+        "days_late": 0,
+        "p_late": null
+      },
+      {
+        "member_id": "mem-lina",
+        "display_name": "Lina",
+        "role": "member",
+        "subscription_status": "active",
+        "contribution_status": null,
+        "days_late": 0,
+        "p_late": null
+      },
+      {
+        "member_id": "mem-karim",
+        "display_name": "Karim",
+        "role": "member",
+        "subscription_status": "active",
+        "contribution_status": null,
+        "days_late": 0,
+        "p_late": null
+      }
+    ],
+    "cycles": [],
+    "current_cycle_index": 0,
+    "reserve_pct": "0.00"
+  },
+  "paypal": {
+    "product_id": "PROD-2F418192GOLDEN",
+    "plan_id": "P-1GF6MEMBERS100M",
+    "webhook_id": null
+  }
+}

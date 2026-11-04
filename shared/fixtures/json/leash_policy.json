@@ -1,0 +1,14 @@
+{
+  "circle_id": "cir_01JC4Q",
+  "version": 1,
+  "preset": "STANDARD",
+  "thresholds": {
+    "email_change_window_days": 7,
+    "reminder_min_gap_hours": 48,
+    "max_reminders_per_cycle": 3,
+    "swap_cooldown_hours": 24,
+    "swap_near_payout_hours": 48,
+    "high_risk_p_late": "0.50"
+  },
+  "no_auto_chase_member_ids": []
+}

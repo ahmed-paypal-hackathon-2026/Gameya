@@ -1,0 +1,30 @@
+{
+  "session_id": "sess-golden-001",
+  "turn": {
+    "reply": "Got it: 6 friends, $100 every month, starting 1 November. That makes a $600 pot, and each month one member receives it. Here is the plan — please confirm before I create anything in PayPal.",
+    "spec": {
+      "name": "Golden Circle",
+      "member_count": 6,
+      "contribution_amount": "100.00",
+      "currency": "USD",
+      "start_date": "2026-11-01",
+      "organiser_id": "mem-amina",
+      "purpose": "Group savings among friends",
+      "confirmed": false,
+      "cycle_unit": "MONTH"
+    },
+    "tool_calls": [],
+    "agent_decision": {
+      "decision_id": "dec-agent-chat-001",
+      "agent": "circle_agent",
+      "circle_id": "circle-golden-01",
+      "cycle_index": null,
+      "model": "gemini-3.5-flash",
+      "tool_calls": [],
+      "rationale": "All fields extracted from chat; awaiting organiser confirmation before any tool call",
+      "created_at": "2026-10-29T11:00:00Z",
+      "human_approved": false
+    },
+    "needs_confirmation": true
+  }
+}

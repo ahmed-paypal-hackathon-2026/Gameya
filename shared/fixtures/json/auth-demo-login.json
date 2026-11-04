@@ -1,0 +1,10 @@
+{
+  "persona": {
+    "persona_id": "persona-amina",
+    "display_name": "Amina",
+    "role": "organiser",
+    "sandbox_email": "amina-buyer@gameya-sandbox.dev",
+    "avatar": "👑"
+  },
+  "token": null
+}

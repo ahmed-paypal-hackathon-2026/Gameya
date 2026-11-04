@@ -1,0 +1,23 @@
+{
+  "n_sims": 10000,
+  "seed": 42,
+  "points": [
+    {
+      "reserve_pct": "0",
+      "completion_probability": 0.82,
+      "expected_shortfall": "108.00"
+    },
+    {
+      "reserve_pct": "3",
+      "completion_probability": 0.97,
+      "expected_shortfall": "36.00"
+    },
+    {
+      "reserve_pct": "10",
+      "completion_probability": 0.98,
+      "expected_shortfall": "12.00"
+    }
+  ],
+  "recommended_reserve_pct": "3",
+  "explanation": "Across 10,000 simulated circles with these members' reliability scores, a circle with no reserve completed all 6 cycles in 82% of runs. A 3% reserve - a small upfront deposit collected before the first payout - raises completion to 97%, nearly matching the 98% of a full 10% reserve while keeping members' cash in their pockets. The engine recommends 3%."
+}

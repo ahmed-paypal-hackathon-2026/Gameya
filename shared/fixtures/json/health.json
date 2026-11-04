@@ -1,0 +1,8 @@
+{
+  "status": "healthy",
+  "environment": "sandbox",
+  "paypal": "healthy",
+  "llm": "degraded",
+  "database": "healthy",
+  "version": "0.1.0-mvp"
+}

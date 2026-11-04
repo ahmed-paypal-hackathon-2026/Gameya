@@ -1,0 +1,120 @@
+{
+  "circle_id": "circle-golden-01",
+  "rows": [
+    {
+      "member_id": "mem-sara",
+      "display_name": "Sara",
+      "score": {
+        "member_id": "mem-sara",
+        "p_late": 0.1,
+        "top_factors": [
+          {
+            "feature": "on_time_ratio",
+            "contribution": 0.62,
+            "label": "All 3 cycles paid before the due date"
+          },
+          {
+            "feature": "circles_completed",
+            "contribution": 0.21,
+            "label": "Three cycles of history confirm stability"
+          }
+        ]
+      }
+    },
+    {
+      "member_id": "mem-omar",
+      "display_name": "Omar",
+      "score": {
+        "member_id": "mem-omar",
+        "p_late": 0.45,
+        "top_factors": [
+          {
+            "feature": "failed_payments",
+            "contribution": 0.4,
+            "label": "Paid cycle 3 two days late after an invoice"
+          },
+          {
+            "feature": "invoices_needed",
+            "contribution": 0.28,
+            "label": "One PayPal invoice issued during the last cycle"
+          },
+          {
+            "feature": "avg_days_late",
+            "contribution": 0.19,
+            "label": "Next due date is inside the 7-day risk window"
+          }
+        ]
+      }
+    },
+    {
+      "member_id": "mem-youssef",
+      "display_name": "Youssef",
+      "score": {
+        "member_id": "mem-youssef",
+        "p_late": 0.15,
+        "top_factors": [
+          {
+            "feature": "on_time_ratio",
+            "contribution": 0.4,
+            "label": "Two cycles paid on time, one via instant pay-now"
+          },
+          {
+            "feature": "invoices_needed",
+            "contribution": 0.22,
+            "label": "Caught up a missed cycle with Orders v2"
+          }
+        ]
+      }
+    },
+    {
+      "member_id": "mem-lina",
+      "display_name": "Lina",
+      "score": {
+        "member_id": "mem-lina",
+        "p_late": 0.2,
+        "top_factors": [
+          {
+            "feature": "on_time_ratio",
+            "contribution": 0.55,
+            "label": "All 3 cycles paid on time"
+          },
+          {
+            "feature": "account_age_days",
+            "contribution": 0.24,
+            "label": "Short member history flag"
+          }
+        ]
+      }
+    },
+    {
+      "member_id": "mem-karim",
+      "display_name": "Karim",
+      "score": {
+        "member_id": "mem-karim",
+        "p_late": 0.09,
+        "top_factors": [
+          {
+            "feature": "on_time_ratio",
+            "contribution": 0.66,
+            "label": "All 3 cycles paid before the due date"
+          }
+        ]
+      }
+    },
+    {
+      "member_id": "mem-amina",
+      "display_name": "Amina",
+      "score": {
+        "member_id": "mem-amina",
+        "p_late": 0.05,
+        "top_factors": [
+          {
+            "feature": "on_time_ratio",
+            "contribution": 0.7,
+            "label": "Organiser with 3 on-time cycles"
+          }
+        ]
+      }
+    }
+  ]
+}

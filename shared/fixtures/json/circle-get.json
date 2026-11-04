@@ -1,0 +1,165 @@
+{
+  "circle_id": "circle-golden-01",
+  "spec": {
+    "name": "Golden Circle",
+    "member_count": 6,
+    "contribution_amount": "100.00",
+    "currency": "USD",
+    "start_date": "2026-11-01",
+    "organiser_id": "mem-amina",
+    "purpose": "Group savings among friends",
+    "confirmed": true,
+    "cycle_unit": "MONTH"
+  },
+  "members": [
+    {
+      "member_id": "mem-amina",
+      "display_name": "Amina",
+      "role": "organiser",
+      "subscription_status": "active",
+      "contribution_status": "paid",
+      "days_late": 0,
+      "p_late": null
+    },
+    {
+      "member_id": "mem-omar",
+      "display_name": "Omar",
+      "role": "member",
+      "subscription_status": "active",
+      "contribution_status": "paid",
+      "days_late": 2,
+      "p_late": null
+    },
+    {
+      "member_id": "mem-sara",
+      "display_name": "Sara",
+      "role": "member",
+      "subscription_status": "active",
+      "contribution_status": "paid",
+      "days_late": 0,
+      "p_late": null
+    },
+    {
+      "member_id": "mem-youssef",
+      "display_name": "Youssef",
+      "role": "member",
+      "subscription_status": "active",
+      "contribution_status": "pending",
+      "days_late": 0,
+      "p_late": null
+    },
+    {
+      "member_id": "mem-lina",
+      "display_name": "Lina",
+      "role": "member",
+      "subscription_status": "active",
+      "contribution_status": "paid",
+      "days_late": 0,
+      "p_late": null
+    },
+    {
+      "member_id": "mem-karim",
+      "display_name": "Karim",
+      "role": "member",
+      "subscription_status": "active",
+      "contribution_status": "pending",
+      "days_late": 0,
+      "p_late": null
+    }
+  ],
+  "cycles": [
+    {
+      "cycle_index": 0,
+      "status": "paid_out",
+      "due_date": "2026-11-01",
+      "amount_due": "600.00",
+      "pot_total": "600.00",
+      "recipient_id": "mem-amina",
+      "unpaid_members": []
+    },
+    {
+      "cycle_index": 1,
+      "status": "paid_out",
+      "due_date": "2026-12-01",
+      "amount_due": "600.00",
+      "pot_total": "600.00",
+      "recipient_id": "mem-omar",
+      "unpaid_members": []
+    },
+    {
+      "cycle_index": 2,
+      "status": "paid_out",
+      "due_date": "2027-01-01",
+      "amount_due": "600.00",
+      "pot_total": "600.00",
+      "recipient_id": "mem-sara",
+      "unpaid_members": []
+    },
+    {
+      "cycle_index": 3,
+      "status": "upcoming",
+      "due_date": "2027-02-01",
+      "amount_due": "600.00",
+      "pot_total": "0.00",
+      "recipient_id": "mem-youssef",
+      "unpaid_members": [
+        {
+          "member_id": "mem-amina",
+          "display_name": "Amina",
+          "role": "organiser",
+          "subscription_status": "active",
+          "contribution_status": "pending",
+          "days_late": 0,
+          "p_late": null
+        },
+        {
+          "member_id": "mem-omar",
+          "display_name": "Omar",
+          "role": "member",
+          "subscription_status": "active",
+          "contribution_status": "pending",
+          "days_late": 2,
+          "p_late": null
+        },
+        {
+          "member_id": "mem-sara",
+          "display_name": "Sara",
+          "role": "member",
+          "subscription_status": "active",
+          "contribution_status": "pending",
+          "days_late": 0,
+          "p_late": null
+        },
+        {
+          "member_id": "mem-youssef",
+          "display_name": "Youssef",
+          "role": "member",
+          "subscription_status": "active",
+          "contribution_status": "pending",
+          "days_late": 0,
+          "p_late": null
+        },
+        {
+          "member_id": "mem-lina",
+          "display_name": "Lina",
+          "role": "member",
+          "subscription_status": "active",
+          "contribution_status": "pending",
+          "days_late": 0,
+          "p_late": null
+        },
+        {
+          "member_id": "mem-karim",
+          "display_name": "Karim",
+          "role": "member",
+          "subscription_status": "active",
+          "contribution_status": "pending",
+          "days_late": 0,
+          "p_late": null
+        }
+      ]
+    }
+  ],
+  "current_cycle_index": 3,
+  "reserve_pct": "3"
+}

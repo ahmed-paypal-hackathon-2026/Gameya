@@ -1,0 +1,53 @@
+# CODEOWNERS for Gam'eya
+#
+# Lanes (engineering plan Section 8.1). Person 5 owns contracts (both languages),
+# fixtures, root files, CI, docs, seed script and integration tests; contract
+# changes need Person 5 + every affected consumer.
+# Handles from the team roster; P1 handle pending until Person 1 is confirmed.
+
+# --- Person 5 (Ahmed) ---
+/LICENSE                        @Ahmed-fall
+/README.md                      @Ahmed-fall
+/AGENTS.md                      @Ahmed-fall
+/.env.example                   @Ahmed-fall
+/.gitignore                     @Ahmed-fall
+/docker-compose.yml             @Ahmed-fall
+/render.yaml                    @Ahmed-fall
+/.github/                       @Ahmed-fall
+/docs/                          @Ahmed-fall
+/shared/fixtures/               @Ahmed-fall
+/scripts/                       @Ahmed-fall
+/backend/app/schemas/contracts.py   @Ahmed-fall
+/frontend/src/types/contracts.ts    @Ahmed-fall
+/backend/tests/integration/     @Ahmed-fall
+
+# --- Person 1 (backend & PayPal) — handle TBD ---
+/backend/requirements.txt
+/backend/Dockerfile
+/backend/app/main.py
+/backend/app/config.py
+/backend/app/db/
+/backend/app/api/
+/backend/app/domain/
+/backend/app/services/paypal/
+/backend/tests/unit_paypal/
+
+# --- Person 2 (Nour) — AI agents & guardrails ---
+/backend/app/ai/llm.py          @NourAtef112
+/backend/app/ai/guardrails.py   @NourAtef112
+/backend/app/ai/toolkit_adapter.py @NourAtef112
+/backend/app/ai/circle_agent.py @NourAtef112
+/backend/app/ai/smart_chase.py  @NourAtef112
+/backend/app/ai/mediation.py    @NourAtef112
+/backend/app/ai/copilot.py      @NourAtef112
+/backend/app/ai/swap_broker.py  @NourAtef112
+/backend/app/ai/prompts/        @NourAtef112
+
+# --- Person 3 (Yassin) — fair-order AI & ML ---
+/backend/app/ai/needs_extractor.py @yassinalamelden
+/backend/app/ai/fair_order.py   @yassinalamelden
+/backend/app/ml/                @yassinalamelden
+/backend/tests/unit_ml/         @yassinalamelden
+
+# --- Person 4 (Moamen) — frontend & AG Grid ---
+/frontend/                      @MoamenFouad
