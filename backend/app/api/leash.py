@@ -18,6 +18,7 @@ from ..leash import LeashError, leash_enabled, resolve
 from ..leash.models import LeashDecisionRecord
 from ..leash.policy import get_active_policy, save_policy
 from ..schemas.contracts import (
+    CircleId,
     GuardAction,
     LeashDecision,
     LeashDecisionRow,
@@ -176,7 +177,7 @@ def _inbox_item(row: LeashDecisionRecord) -> LeashInboxItem:
 def _decision_row(row: LeashDecisionRecord) -> LeashDecisionRow:
     return LeashDecisionRow(
         decision_id=row.id,
-        circle_id=row.circle_id,
+        circle_id=CircleId(row.circle_id),
         policy_version=row.policy_version,
         action=GuardAction(row.action),
         subject_type=row.subject_type,  # type: ignore[arg-type]

@@ -23,9 +23,15 @@ FIXTURES_DIR = Path(__file__).resolve().parents[3] / "shared" / "fixtures" / "js
 
 
 @pytest.fixture(name="client")
-def _client():
+def _client(monkeypatch: pytest.MonkeyPatch):
+    # The demo runs with DEMO_MODE on (admin routes are off by default).
+    from app.config import get_settings
+
+    monkeypatch.setenv("DEMO_MODE", "1")
+    get_settings.cache_clear()
     with TestClient(create_app()) as c:
         yield c
+    get_settings.cache_clear()
 
 
 def _fixture(name: str) -> Path:  # path for exact-parity assertions
@@ -163,9 +169,12 @@ def test_demo_login_roundtrip(client: TestClient) -> None:
     assert client.post("/api/v1/auth/demo-login", json={"persona_id": "nope"}).status_code == 404
 
 
-def test_leash_actor_requires_header(client: TestClient) -> None:
+def test_leash_actor_requires_a_login_token(client: TestClient) -> None:
     assert client.get("/api/v1/circles/c-golden/leash/policy").status_code == 401
-    headers = {"X-Actor-Member": "persona-amina", "X-Actor-Organiser-Of": "c-golden"}
+    token = client.post("/api/v1/auth/demo-login", json={"persona_id": "persona-amina"}).json()[
+        "token"
+    ]
+    headers = {"Authorization": f"Bearer {token}"}
     assert client.get("/api/v1/circles/c-golden/leash/policy", headers=headers).status_code == 200
 
 

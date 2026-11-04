@@ -325,7 +325,8 @@ async def explain_order_detailed(
     }
     try:
         prompt = _EXPLAIN_PROMPT + json.dumps(payload, ensure_ascii=False, indent=1)
-        reply = await asyncio.wait_for(llm.generate_json(prompt, schema), LLM_TIMEOUT_S)
+        # Typed as object: the protocol promises a dict, but an LLM may return anything.
+        reply: object = await asyncio.wait_for(llm.generate_json(prompt, schema), LLM_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - any LLM failure falls back to templates
         return ExplanationResult(texts, sources, None, [f"llm failed ({type(exc).__name__})"])
     if not isinstance(reply, dict):

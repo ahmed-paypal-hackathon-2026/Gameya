@@ -12,7 +12,8 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from .models import Base  # noqa: F401  (registers metadata)
+from . import models  # noqa: F401  (registers table metadata)
+from .base import Base
 
 _engine: Engine | None = None
 _SessionLocal: sessionmaker[Session] | None = None

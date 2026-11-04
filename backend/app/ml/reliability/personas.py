@@ -10,7 +10,7 @@ Leash high_risk_p_late threshold and Smart Chase fire). Person 5 can turn
 from __future__ import annotations
 
 from app.ml.reliability.scorer import score_reliability
-from app.schemas.contracts import ReliabilityFeatures, ReliabilityScore
+from app.schemas.contracts import MemberId, ReliabilityFeatures, ReliabilityScore
 
 PERSONA_FEATURES: dict[str, ReliabilityFeatures] = {
     "amina": ReliabilityFeatures(
@@ -71,7 +71,7 @@ PERSONA_FEATURES: dict[str, ReliabilityFeatures] = {
 
 
 def persona_scores() -> dict[str, ReliabilityScore]:
-    return {pid: score_reliability(f, pid) for pid, f in PERSONA_FEATURES.items()}
+    return {pid: score_reliability(f, MemberId(pid)) for pid, f in PERSONA_FEATURES.items()}
 
 
 if __name__ == "__main__":
