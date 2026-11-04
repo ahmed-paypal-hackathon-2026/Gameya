@@ -19,7 +19,9 @@
       "subscription_status": "active",
       "contribution_status": "paid",
       "days_late": 0,
-      "p_late": null
+      "p_late": null,
+      "locale": "en",
+      "slot_index": 0
     },
     {
       "member_id": "mem-omar",
@@ -28,7 +30,9 @@
       "subscription_status": "active",
       "contribution_status": "paid",
       "days_late": 2,
-      "p_late": null
+      "p_late": null,
+      "locale": "en",
+      "slot_index": 1
     },
     {
       "member_id": "mem-sara",
@@ -37,7 +41,9 @@
       "subscription_status": "active",
       "contribution_status": "paid",
       "days_late": 0,
-      "p_late": null
+      "p_late": null,
+      "locale": "ar-EG",
+      "slot_index": 2
     },
     {
       "member_id": "mem-youssef",
@@ -46,7 +52,9 @@
       "subscription_status": "active",
       "contribution_status": "pending",
       "days_late": 0,
-      "p_late": null
+      "p_late": null,
+      "locale": "ar-EG",
+      "slot_index": 4
     },
     {
       "member_id": "mem-lina",
@@ -55,7 +63,9 @@
       "subscription_status": "active",
       "contribution_status": "paid",
       "days_late": 0,
-      "p_late": null
+      "p_late": null,
+      "locale": "en",
+      "slot_index": 3
     },
     {
       "member_id": "mem-karim",
@@ -64,7 +74,9 @@
       "subscription_status": "active",
       "contribution_status": "pending",
       "days_late": 0,
-      "p_late": null
+      "p_late": null,
+      "locale": "en",
+      "slot_index": 5
     }
   ],
   "cycles": [
@@ -110,7 +122,9 @@
           "subscription_status": "active",
           "contribution_status": "pending",
           "days_late": 0,
-          "p_late": null
+          "p_late": null,
+          "locale": "en",
+          "slot_index": 0
         },
         {
           "member_id": "mem-omar",
@@ -119,7 +133,9 @@
           "subscription_status": "active",
           "contribution_status": "pending",
           "days_late": 2,
-          "p_late": null
+          "p_late": null,
+          "locale": "en",
+          "slot_index": 1
         },
         {
           "member_id": "mem-sara",
@@ -128,7 +144,9 @@
           "subscription_status": "active",
           "contribution_status": "pending",
           "days_late": 0,
-          "p_late": null
+          "p_late": null,
+          "locale": "ar-EG",
+          "slot_index": 2
         },
         {
           "member_id": "mem-youssef",
@@ -137,7 +155,9 @@
           "subscription_status": "active",
           "contribution_status": "pending",
           "days_late": 0,
-          "p_late": null
+          "p_late": null,
+          "locale": "ar-EG",
+          "slot_index": 4
         },
         {
           "member_id": "mem-lina",
@@ -146,7 +166,9 @@
           "subscription_status": "active",
           "contribution_status": "pending",
           "days_late": 0,
-          "p_late": null
+          "p_late": null,
+          "locale": "en",
+          "slot_index": 3
         },
         {
           "member_id": "mem-karim",
@@ -155,7 +177,9 @@
           "subscription_status": "active",
           "contribution_status": "pending",
           "days_late": 0,
-          "p_late": null
+          "p_late": null,
+          "locale": "en",
+          "slot_index": 5
         }
       ]
     }
