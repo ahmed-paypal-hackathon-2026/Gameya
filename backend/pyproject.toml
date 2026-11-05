@@ -24,7 +24,7 @@ select = ["E", "W", "F", "I", "UP", "B"]
 [tool.mypy]
 strict = true
 python_version = "3.11"
-files = ["app/schemas", "app/leash"]
+files = ["app"]
 explicit_package_bases = false
 disallow_untyped_defs = true
 warn_unreachable = true
@@ -39,12 +39,7 @@ follow_imports = "skip"
 follow_imports_for_stubs = true
 
 [[tool.mypy.overrides]]
-module = ["app.ai.*", "app.ml.*", "scipy.*", "ulid.*"]
+module = ["scipy.*", "ulid.*"]
 strict = false
 ignore_errors = true
 
-[[tool.mypy.overrides]]
-module = ["app.ai._llm_port", "app.ai.prose_guard"]
-strict = false
-follow_imports = "skip"
-follow_imports_for_stubs = true
