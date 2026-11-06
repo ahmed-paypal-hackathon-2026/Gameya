@@ -5,6 +5,7 @@ PAYPAL_SANDBOX_PAYER_EMAIL are set. Deselected by default (`-m sandbox`).
 Creates real sandbox objects with unique names; prints ids, never credentials.
 """
 
+import base64
 import os
 import uuid
 
@@ -17,6 +18,7 @@ from app.ai.toolkit_adapter import (
     CreateSubscriptionPlanParameters,
     GenerateInvoiceQrCodeParameters,
     SendInvoiceParameters,
+    SendInvoiceReminderParameters,
     request_id,
 )
 
@@ -138,12 +140,20 @@ async def test_live_product_plan_invoice_qr() -> None:
             SendInvoiceParameters(invoice_id=invoice_id),
             request_id=request_id(key, "send_invoice"),
         )
+        reminder = await executor.call(
+            "send_invoice_reminder",
+            SendInvoiceReminderParameters(invoice_id=invoice_id, note="Friendly reminder"),
+            request_id=request_id(key, "send_invoice_reminder"),
+        )
+        assert reminder == {}
         qr = await executor.call(
             "generate_invoice_qr_code",
             GenerateInvoiceQrCodeParameters(invoice_id=invoice_id),
             request_id=request_id(key, "generate_invoice_qr_code"),
         )
-        assert qr["qr_code_base64"]
+        raw_qr = qr["qr_code_base64"]
+        print(f"qr_len={len(raw_qr)} qr_head={raw_qr[:12]!r}")
+        assert base64.b64decode(raw_qr, validate=True).startswith(b"\x89PNG")
 
         print(f"product_id={product_id}")
         print(f"plan_id={plan_id}")
