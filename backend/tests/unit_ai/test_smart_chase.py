@@ -22,6 +22,9 @@ from app.schemas.contracts import (
     ReliabilityFactor,
     ReliabilityScore,
 )
+from pydantic import BaseModel
+
+from .fakes import FakeJsonModel
 
 DUE = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 
@@ -181,3 +184,97 @@ async def test_plan_chase_never_calls_executor() -> None:
     executor = FakeExecutor()
     await plan_chase(member(), cycle(), score(), now=DUE + timedelta(days=2), json_models=[])
     assert executor.calls == []
+
+
+# --- messages -------------------------------------------------------------------------------
+
+EN_INVOICE = (
+    "Hi Omar, this invoice covers your unpaid Gam'eya contribution of $100.00 for "
+    "cycle 3 of Family Circle."
+)
+EN_NUDGE = (
+    "Hi Omar, your Gam'eya contribution of $100.00 for cycle 3 is due on "
+    "2026-11-10. Paying on time keeps the circle on track for everyone."
+)
+LATE = DUE + timedelta(days=2)
+LABELLED = [ReliabilityFactor(feature="late", contribution=0.4, label="Paid late recently")]
+
+
+class ChaseText(BaseModel):
+    text: str
+
+
+async def test_model_text_used_when_numbers_ok() -> None:
+    text = "Hi Omar, a gentle note about your $100.00 for cycle 3, due 2026-11-10. Thank you!"
+    model = FakeJsonModel(ChaseText(text=text), name="gemini-test")
+    plan = await plan_chase(member(), cycle(), score(), now=LATE, json_models=[model])
+    assert plan.invoice_note == text
+    assert plan.message_source == "gemini"
+    assert plan.agent_decision is not None and plan.agent_decision.model == "gemini-test"
+    assert len(model.prompts) == 1
+
+
+async def test_message_rejects_invented_number_uses_template() -> None:
+    model = FakeJsonModel(ChaseText(text="Hi Omar, please pay $150 now."))
+    plan = await plan_chase(member(), cycle(), score(), now=LATE, json_models=[model])
+    assert plan.message_source == "template"
+    assert plan.invoice_note == EN_INVOICE
+
+
+async def test_nudge_template_exact() -> None:
+    plan = await plan_chase(
+        member(), cycle(), score(0.8), now=DUE - timedelta(days=1), json_models=[]
+    )
+    assert plan.nudge_text == EN_NUDGE
+    assert plan.invoice_note is None
+
+
+async def test_message_over_600_chars_uses_template() -> None:
+    model = FakeJsonModel(ChaseText(text="Please pay soon. " * 40))
+    plan = await plan_chase(member(), cycle(), score(), now=LATE, json_models=[model])
+    assert plan.message_source == "template"
+    assert plan.invoice_note == EN_INVOICE
+
+
+async def test_model_failure_uses_template() -> None:
+    model = FakeJsonModel(error=RuntimeError("quota"))
+    plan = await plan_chase(member(), cycle(), score(), now=LATE, json_models=[model])
+    assert plan.message_source == "template"
+    assert plan.invoice_note == EN_INVOICE
+
+
+async def test_arabic_template_for_ar_locale() -> None:
+    plan = await plan_chase(member(locale="ar-EG"), cycle(), score(), now=LATE, json_models=[])
+    assert plan.locale == "ar-EG"
+    assert plan.invoice_note == (
+        "أهلاً Omar، الفاتورة دي عن قسط الجمعية $100.00 اللي لسه مدفعش للدورة 3 في Family Circle."
+    )
+
+
+async def test_member_message_never_contains_reliability_label() -> None:
+    leaky = "Hi Omar, because of Paid late recently we are writing about $100.00."
+    model = FakeJsonModel(ChaseText(text=leaky))
+    plan = await plan_chase(member(), cycle(), score(0.7, LABELLED), now=LATE, json_models=[model])
+    assert plan.invoice_note == EN_INVOICE
+    assert "paid late recently" not in (plan.invoice_note or "").lower()
+    assert plan.agent_decision is not None
+    assert "Paid late recently" in plan.agent_decision.rationale
+
+
+async def test_prompt_never_carries_reliability_data() -> None:
+    model = FakeJsonModel(ChaseText(text="Hi Omar, about your $100.00 for cycle 3."))
+    await plan_chase(member(), cycle(), score(0.7, LABELLED), now=LATE, json_models=[model])
+    system, user = model.prompts[0]
+    for text in (system, user):
+        assert "Paid late recently" not in text
+        assert "0.7" not in text
+    assert "<untrusted_member_text>" in user
+
+
+async def test_noop_makes_no_llm_call() -> None:
+    model = FakeJsonModel(ChaseText(text="unused"))
+    plan = await plan_chase(
+        member(), cycle(), score(0.1), now=DUE - timedelta(days=1), json_models=[model]
+    )
+    assert plan.action is ChaseAction.NOOP
+    assert model.prompts == []
