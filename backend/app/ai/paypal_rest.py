@@ -72,10 +72,25 @@ def _body(tool: str, params: BaseModel) -> dict[str, Any]:
     return data  # create_product, create_subscription_plan: toolkit body as-is
 
 
+def _qr_value(text: str) -> str:
+    """Base64 PNG from the QR response.
+
+    The sandbox answers with a multipart/form-data body whose `image` part is
+    the base64 text; a bare base64 body or a JSON string is also accepted.
+    """
+    value = text.strip()
+    if value.startswith("--"):
+        boundary, _, rest = value.partition("\r\n")
+        _, sep, body = rest.partition("\r\n\r\n")
+        if sep:
+            return body.split("\r\n" + boundary, 1)[0].strip()
+    return value
+
+
 def _parse(tool: str, response: httpx.Response) -> dict[str, Any]:
     text = response.text
     if tool == "generate_invoice_qr_code":
-        value = text.strip()
+        value = _qr_value(text)
         if value.startswith('"') and value.endswith('"') and len(value) >= 2:
             value = value[1:-1]
         return {"qr_code_base64": value}

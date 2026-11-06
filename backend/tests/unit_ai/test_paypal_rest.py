@@ -277,3 +277,20 @@ async def test_transport_error_is_status_zero_single_attempt() -> None:
     assert ei.value.status == 0
     assert route.call_count == 1
     assert ex.delays == []
+
+
+@respx.mock
+async def test_qr_extracted_from_multipart_body() -> None:
+    body = (
+        b'--bnd-1\r\nContent-Disposition: form-data; name="image"\r\n'
+        b"Content-Type: text/plain\r\n\r\niVBORw0KGgo=\r\n--bnd-1--\r\n"
+    )
+    respx.post(f"{BASE}/v2/invoicing/invoices/INV-1/generate-qr-code").respond(
+        200, content=body, headers={"Content-Type": "multipart/form-data; boundary=bnd-1"}
+    )
+    out = await _Executor().call(
+        "generate_invoice_qr_code",
+        GenerateInvoiceQrCodeParameters(invoice_id="INV-1"),
+        request_id=RID,
+    )
+    assert out == {"qr_code_base64": "iVBORw0KGgo="}
