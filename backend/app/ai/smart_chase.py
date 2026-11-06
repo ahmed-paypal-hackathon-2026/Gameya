@@ -191,7 +191,7 @@ async def plan_chase(
                 member,
                 cycle,
                 score,
-                member.unpaid_amount,
+                min(member.unpaid_amount, cycle.contribution_amount),
                 common,
                 models,
             )
@@ -205,7 +205,7 @@ async def plan_chase(
             member,
             cycle,
             score,
-            member.unpaid_amount,
+            min(member.unpaid_amount, cycle.contribution_amount),
             common,
             models,
         )
