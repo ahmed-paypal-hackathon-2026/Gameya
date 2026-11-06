@@ -8,6 +8,10 @@ provider (Person 1's auth manager); this module never reads credentials.
 
 Logging policy: tokens, headers and request bodies are never logged or put in
 an error. `PayPalToolError` carries only the tool, HTTP status and debug id.
+
+Status 0 means a transport or token-provider failure (no HTTP response). Such
+failures are not retried here; the caller may retry with the same request id,
+which PayPal de-duplicates, so doing so is safe.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from pydantic import BaseModel
@@ -126,12 +131,16 @@ class RestToolExecutor:
             raise ValueError(f"unsupported tool: {tool}")
         template, prefer = route
         invoice_id = getattr(params, "invoice_id", "")
-        url = self._base_url + template.format(invoice_id=invoice_id)
+        url = self._base_url + template.format(invoice_id=quote(str(invoice_id), safe=""))
         body = _body(tool, params)
 
         attempt = 0
         while True:
-            token = await self._token_provider()
+            try:
+                token = await self._token_provider()
+            except Exception:
+                # No message or chain: provider errors may carry credentials.
+                raise PayPalToolError(tool, 0, None) from None
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",

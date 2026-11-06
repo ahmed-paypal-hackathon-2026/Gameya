@@ -240,3 +240,40 @@ async def test_no_retry_on_400_and_error_hides_secrets() -> None:
 async def test_unknown_tool_rejected() -> None:
     with pytest.raises(ValueError):
         await _Executor().call("create_payout", CreateProductParameters(name="x"), request_id=RID)
+
+
+@respx.mock
+async def test_token_provider_failure_becomes_tool_error() -> None:
+    async def boom() -> str:
+        raise httpx.ConnectTimeout("secret-client-id timed out")
+
+    route = respx.post(f"{BASE}/v1/catalogs/products")
+    ex = RestToolExecutor(boom)
+    with pytest.raises(PayPalToolError) as ei:
+        await ex.call("create_product", CreateProductParameters(name="C"), request_id=RID)
+    assert ei.value.status == 0
+    assert ei.value.__cause__ is None
+    assert "secret-client-id" not in f"{ei.value!s} {ei.value!r}"
+    assert route.call_count == 0
+
+
+@respx.mock
+async def test_invoice_id_is_path_quoted() -> None:
+    route = respx.post(
+        url__regex=r"https://api-m\.sandbox\.paypal\.com/v2/invoicing/invoices/.*"
+    ).respond(202, json={})
+    await _Executor().call(
+        "send_invoice", SendInvoiceParameters(invoice_id="../x?y"), request_id=RID
+    )
+    assert route.calls[0].request.url.raw_path == b"/v2/invoicing/invoices/..%2Fx%3Fy/send"
+
+
+@respx.mock
+async def test_transport_error_is_status_zero_single_attempt() -> None:
+    route = respx.post(f"{BASE}/v1/catalogs/products").mock(side_effect=httpx.ConnectError("boom"))
+    ex = _Executor()
+    with pytest.raises(PayPalToolError) as ei:
+        await ex.call("create_product", CreateProductParameters(name="C"), request_id=RID)
+    assert ei.value.status == 0
+    assert route.call_count == 1
+    assert ex.delays == []
