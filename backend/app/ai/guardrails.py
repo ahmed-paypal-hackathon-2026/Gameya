@@ -23,6 +23,7 @@ __all__ = [
     "build_decision",
     "cap_amount",
     "check_tool_allowed",
+    "has_link_or_contact",
     "normalise_digits",
     "prose_numbers_ok",
     "wrap_untrusted",
@@ -103,6 +104,14 @@ def prose_numbers_ok(text: str, allowed: Iterable[str]) -> bool:
     """True only if every number in `text` is one the engine supplied."""
     allowed_set = {_canonical(a) for a in allowed}
     return all(_canonical(t) in allowed_set for t in _NUMBER_RE.findall(normalise_digits(text)))
+
+
+_LINK_OR_CONTACT_RE = re.compile(r"http|www\.|@", re.IGNORECASE)
+
+
+def has_link_or_contact(text: str) -> bool:
+    """True if model text carries a URL or an email address (a phishing vector)."""
+    return _LINK_OR_CONTACT_RE.search(text) is not None
 
 
 _CENT = Decimal("0.01")

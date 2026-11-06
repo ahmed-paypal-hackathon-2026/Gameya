@@ -14,7 +14,7 @@ from types import MappingProxyType
 from pydantic import BaseModel
 
 from ..schemas.contracts import AgentName, MediationKind, MediationOption, MemberId
-from .guardrails import build_decision, prose_numbers_ok, wrap_untrusted
+from .guardrails import build_decision, has_link_or_contact, prose_numbers_ok, wrap_untrusted
 from .ids import new_id
 from .inputs import CycleDue, MemberDue
 from .llm import JsonModel, default_models, run_with_failover
@@ -119,7 +119,7 @@ async def _model_descriptions(
 
 def _checked(text: str | None, member: MemberDue, cycle: CycleDue) -> str | None:
     """The model text if it is usable, else None (the caller then uses the template)."""
-    if not text or len(text) > MAX_DESCRIPTION_CHARS:
+    if not text or len(text) > MAX_DESCRIPTION_CHARS or has_link_or_contact(text):
         return None
     allowed = [f"{member.unpaid_amount:.2f}", f"{cycle.reserve_balance:.2f}"]
     return text if prose_numbers_ok(text, allowed) else None

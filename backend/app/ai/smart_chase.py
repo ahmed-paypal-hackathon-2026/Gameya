@@ -23,7 +23,13 @@ from ..schemas.contracts import (
     ToolName,
 )
 from ..schemas.contracts import ToolCall as AuditToolCall
-from .guardrails import build_decision, cap_amount, prose_numbers_ok, wrap_untrusted
+from .guardrails import (
+    build_decision,
+    cap_amount,
+    has_link_or_contact,
+    prose_numbers_ok,
+    wrap_untrusted,
+)
 from .ids import new_id
 from .inputs import CycleDue, MemberDue
 from .llm import JsonModel, default_models, run_with_failover
@@ -134,6 +140,7 @@ async def _model_message(
     if (
         not text
         or len(text) > MAX_MESSAGE_CHARS
+        or has_link_or_contact(text)
         or not prose_numbers_ok(text, allowed)
         or any(f.label.lower() in lowered for f in score.top_factors)
     ):

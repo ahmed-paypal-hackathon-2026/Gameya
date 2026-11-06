@@ -35,7 +35,7 @@ from ..schemas.contracts import (
 from ..schemas.contracts import (
     ToolCall as AuditToolCall,
 )
-from .guardrails import build_decision, wrap_untrusted
+from .guardrails import build_decision, has_link_or_contact, wrap_untrusted
 from .llm import JsonModel, ToolCall, ToolPlanModel, default_models, run_with_failover
 from .prompts.circle_agent import EXTRACT_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT
 from .toolkit_adapter import (
@@ -292,6 +292,9 @@ async def _extract_with_llm(
         provider_timeout=LLM_PROVIDER_TIMEOUT_SECONDS,
     )
     if draft is None or draft == CircleSpecDraft():
+        return None
+    # The name and purpose reach the confirm card; a link or address there is a phishing vector.
+    if any(has_link_or_contact(text) for text in (draft.name, draft.purpose) if text):
         return None
     return draft, answered[-1]
 
