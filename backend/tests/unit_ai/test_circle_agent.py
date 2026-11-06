@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 from app.ai.circle_agent import (
+    CircleCreationFailed,
     CircleSpecDraft,
     circle_agent_turn,
     extract_draft_regex,
@@ -17,6 +18,7 @@ from app.schemas.contracts import (
     ChatMessage,
     ChatRole,
     CircleAgentTurn,
+    CircleId,
     CircleSpec,
     CycleUnit,
     PayPalReferences,
@@ -283,6 +285,7 @@ async def _confirm(
     executor: FakeExecutor | None = None,
     plan_models: list[FakeToolPlanModel] | None = None,
     reserve_pct: Decimal = Decimal("0"),
+    circle_id: str = "cir_01",
 ) -> tuple[CircleAgentTurn, FakeExecutor]:
     executor = executor or FakeExecutor()
     turn = await circle_agent_turn(
@@ -293,6 +296,7 @@ async def _confirm(
         today=TODAY,
         plan_models=plan_models if plan_models is not None else [],
         reserve_pct=reserve_pct,
+        circle_id=CircleId(circle_id),
     )
     return turn, executor
 
@@ -397,6 +401,8 @@ async def test_confirm_requires_spec_and_executor() -> None:
         await circle_agent_turn(_user("x"), True, executor=FakeExecutor())
     with pytest.raises(ValueError):
         await circle_agent_turn(_user("x"), True, confirmed_spec=SPEC)
+    with pytest.raises(ValueError, match="circle_id"):
+        await circle_agent_turn(_user("x"), True, confirmed_spec=SPEC, executor=FakeExecutor())
 
 
 async def test_confirm_twice_same_request_ids() -> None:
@@ -439,12 +445,44 @@ async def test_paypal_references_read_ids_by_tool_name() -> None:
 
 async def test_missing_product_id_stops_before_plan() -> None:
     executor = FakeExecutor(results={"create_product": {"status": "ok"}})
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CircleCreationFailed) as info:
         await _confirm(executor=executor)
     assert [c[0] for c in executor.calls] == ["create_product"]
+    assert info.value.step == "create_product"
 
 
 async def test_executor_failure_propagates() -> None:
     executor = FakeExecutor(raises={"create_subscription_plan": RuntimeError("boom")})
-    with pytest.raises(RuntimeError):
+    with pytest.raises(CircleCreationFailed):
         await _confirm(executor=executor)
+
+
+async def test_request_ids_depend_on_circle_id() -> None:
+    executor = FakeExecutor()
+    await _confirm(executor=executor, circle_id="cir_A")
+    await _confirm(executor=executor, circle_id="cir_B")
+    await _confirm(executor=executor, circle_id="cir_A")
+    ids = [c[2] for c in executor.calls]
+    assert not set(ids[:2]) & set(ids[2:4])
+    assert ids[:2] == ids[4:]
+
+
+async def test_plan_failure_carries_both_audit_records() -> None:
+    executor = FakeExecutor(raises={"create_subscription_plan": ValueError("boom")})
+    with pytest.raises(CircleCreationFailed) as info:
+        await _confirm(executor=executor)
+    err = info.value
+    assert err.step == "create_subscription_plan"
+    assert [(t.name.value, t.result_summary) for t in err.tool_calls] == [
+        ("create_product", "FAKE-00000001"),
+        ("create_subscription_plan", "failed: ValueError"),
+    ]
+    assert isinstance(err.__cause__, ValueError)
+
+
+async def test_product_failure_carries_its_failed_record() -> None:
+    executor = FakeExecutor(raises={"create_product": ValueError("boom")})
+    with pytest.raises(CircleCreationFailed) as info:
+        await _confirm(executor=executor)
+    assert info.value.step == "create_product"
+    assert [t.result_summary for t in info.value.tool_calls] == ["failed: ValueError"]

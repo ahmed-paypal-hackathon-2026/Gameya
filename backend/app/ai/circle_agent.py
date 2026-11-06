@@ -32,6 +32,9 @@ from ..schemas.contracts import (
     PayPalReferences,
     ToolName,
 )
+from ..schemas.contracts import (
+    ToolCall as AuditToolCall,
+)
 from .guardrails import build_decision, wrap_untrusted
 from .llm import JsonModel, ToolCall, ToolPlanModel, default_models, run_with_failover
 from .prompts.circle_agent import EXTRACT_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT
@@ -53,6 +56,7 @@ from .toolkit_adapter import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "CircleCreationFailed",
     "CircleSpecDraft",
     "circle_agent_turn",
     "extract_draft_regex",
@@ -308,6 +312,8 @@ async def circle_agent_turn(
     if confirmed:
         if confirmed_spec is None or executor is None:
             raise ValueError("a confirmed turn needs confirmed_spec and executor")
+        if circle_id is None:
+            raise ValueError("a confirmed turn needs circle_id")
         return await _confirmed_turn(confirmed_spec, executor, plan_models, reserve_pct, circle_id)
     today = today or date.today()
     models = json_models if json_models is not None else default_models()
@@ -345,14 +351,25 @@ async def circle_agent_turn(
     )
 
 
-def _idempotency_key(spec: CircleSpec, reserve_pct: Decimal) -> str:
-    """Stable per (spec, reserve): a retried confirm never creates a second product or plan.
+class CircleCreationFailed(RuntimeError):  # noqa: N818 - name fixed by the interface
+    """Product or plan creation failed; carries the audit records made so far."""
+
+    def __init__(self, step: str, message: str, tool_calls: list[AuditToolCall]) -> None:
+        super().__init__(f"{step}: {message}")
+        self.step = step
+        self.tool_calls = tool_calls
+
+
+def _idempotency_key(circle_id: str, spec: CircleSpec, reserve_pct: Decimal) -> str:
+    """Stable per (circle, spec, reserve): a retried confirm never creates a second product
+    or plan, while another circle with an identical spec gets its own.
 
     `confirmed` is left out so the flag flipping between retries cannot change the key.
     """
     payload = spec.model_dump_json(exclude={"confirmed"})
     reserve = format(reserve_pct.normalize(), "f")
-    return hashlib.sha256(f"{payload}|reserve_pct={reserve}".encode()).hexdigest()[:16]
+    raw = f"{circle_id}|{payload}|reserve_pct={reserve}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def _product_params(spec: CircleSpec) -> CreateProductParameters:
@@ -452,28 +469,29 @@ async def _confirmed_turn(
     inner: ToolExecutor,
     plan_models: Sequence[ToolPlanModel] | None,
     reserve_pct: Decimal,
-    circle_id: str | None,
+    circle_id: str,
 ) -> CircleAgentTurn:
     models = plan_models if plan_models is not None else default_models()
     source = await _label_plan(models, spec, reserve_pct, circle_id)
-    key = _idempotency_key(spec, reserve_pct)
+    key = _idempotency_key(circle_id, spec, reserve_pct)
     guarded = GuardedExecutor(AgentName.CIRCLE_AGENT, inner)
-    product = await guarded.call(
-        ToolName.CREATE_PRODUCT,
-        _product_params(spec),
-        request_id=request_id(key, ToolName.CREATE_PRODUCT.value),
+
+    async def create(tool: ToolName, params: BaseModel) -> str:
+        try:
+            result = await guarded.call(tool, params, request_id=request_id(key, tool.value))
+        except Exception as exc:
+            raise CircleCreationFailed(
+                tool.value, type(exc).__name__, list(guarded.records)
+            ) from exc
+        paypal_id = result.get("id")
+        if not isinstance(paypal_id, str) or not paypal_id:
+            raise CircleCreationFailed(tool.value, "PayPal returned no id", list(guarded.records))
+        return paypal_id
+
+    product_id = await create(ToolName.CREATE_PRODUCT, _product_params(spec))
+    plan_id = await create(
+        ToolName.CREATE_SUBSCRIPTION_PLAN, _plan_params(spec, product_id, reserve_pct, circle_id)
     )
-    product_id = product.get("id")
-    if not isinstance(product_id, str) or not product_id:
-        raise RuntimeError("PayPal returned no product id")
-    plan = await guarded.call(
-        ToolName.CREATE_SUBSCRIPTION_PLAN,
-        _plan_params(spec, product_id, reserve_pct, circle_id),
-        request_id=request_id(key, ToolName.CREATE_SUBSCRIPTION_PLAN.value),
-    )
-    plan_id = plan.get("id")
-    if not isinstance(plan_id, str) or not plan_id:
-        raise RuntimeError("PayPal returned no plan id")
     return CircleAgentTurn(
         reply=f"Done. PayPal product {product_id} and plan {plan_id} are ready.",
         spec=spec,
