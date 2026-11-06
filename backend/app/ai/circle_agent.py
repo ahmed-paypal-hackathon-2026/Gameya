@@ -9,6 +9,7 @@ injected `ToolExecutor`.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from collections.abc import Sequence
@@ -18,7 +19,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ValidationError
 
-from ..ml.stress_test import deposit_per_member
+from ..ml.stress_test import deposit_per_member, reserve_setup_fee
 from ..schemas.contracts import (
     AgentName,
     ChatMessage,
@@ -28,21 +29,45 @@ from ..schemas.contracts import (
     CircleSnapshot,
     CircleSpec,
     CycleUnit,
+    PayPalReferences,
+    ToolName,
 )
 from .guardrails import build_decision, wrap_untrusted
-from .llm import JsonModel, ToolPlanModel, default_models, run_with_failover
-from .prompts.circle_agent import EXTRACT_SYSTEM_PROMPT
-from .toolkit_adapter import ToolExecutor
+from .llm import JsonModel, ToolCall, ToolPlanModel, default_models, run_with_failover
+from .prompts.circle_agent import EXTRACT_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT
+from .toolkit_adapter import (
+    BillingCycle,
+    CreateProductParameters,
+    CreateSubscriptionPlanParameters,
+    Frequency,
+    GuardedExecutor,
+    PaymentPreferences,
+    PlanMoney,
+    PricingScheme,
+    ToolExecutor,
+    request_id,
+    tool_declarations,
+    validate_tool_plan,
+)
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CircleSpecDraft", "circle_agent_turn", "extract_draft_regex", "missing_fields"]
+__all__ = [
+    "CircleSpecDraft",
+    "circle_agent_turn",
+    "extract_draft_regex",
+    "missing_fields",
+    "paypal_references",
+]
 
 LLM_BUDGET_SECONDS = 6.0
 LLM_PROVIDER_TIMEOUT_SECONDS = 5.0
 MAX_PROMPT_MESSAGES = 20
 MAX_MESSAGE_CHARS = 4000
 DETERMINISTIC = "deterministic"
+PRODUCT_DESCRIPTION = "Gam'eya rotating savings circle"
+PAYMENT_FAILURE_THRESHOLD = 1
+_CREATE_TOOLS = (ToolName.CREATE_PRODUCT.value, ToolName.CREATE_SUBSCRIPTION_PLAN.value)
 
 _REQUIRED = ("member_count", "contribution_amount", "interval", "start_date")
 
@@ -283,7 +308,7 @@ async def circle_agent_turn(
     if confirmed:
         if confirmed_spec is None or executor is None:
             raise ValueError("a confirmed turn needs confirmed_spec and executor")
-        raise NotImplementedError
+        return await _confirmed_turn(confirmed_spec, executor, plan_models, reserve_pct, circle_id)
     today = today or date.today()
     models = json_models if json_models is not None else default_models()
     draft: CircleSpecDraft | None = None
@@ -317,4 +342,164 @@ async def circle_agent_turn(
             model=source,
             rationale=rationale,
         ),
+    )
+
+
+def _idempotency_key(spec: CircleSpec, reserve_pct: Decimal) -> str:
+    """Stable per (spec, reserve): a retried confirm never creates a second product or plan.
+
+    `confirmed` is left out so the flag flipping between retries cannot change the key.
+    """
+    payload = spec.model_dump_json(exclude={"confirmed"})
+    reserve = format(reserve_pct.normalize(), "f")
+    return hashlib.sha256(f"{payload}|reserve_pct={reserve}".encode()).hexdigest()[:16]
+
+
+def _product_params(spec: CircleSpec) -> CreateProductParameters:
+    return CreateProductParameters(name=spec.name, description=PRODUCT_DESCRIPTION)
+
+
+def _plan_params(
+    spec: CircleSpec, product_id: str, reserve_pct: Decimal, circle_id: str | None
+) -> CreateSubscriptionPlanParameters:
+    """The engine's billing plan: reserve deposit as setup fee, one failed payment suspends."""
+    fee = reserve_setup_fee(_snapshot(spec, reserve_pct, circle_id), reserve_pct)
+    preferences = PaymentPreferences(
+        auto_bill_outstanding=True,
+        payment_failure_threshold=PAYMENT_FAILURE_THRESHOLD,
+        setup_fee=PlanMoney.model_validate(fee) if fee is not None else None,
+        setup_fee_failure_action="CANCEL" if fee is not None else None,
+    )
+    return CreateSubscriptionPlanParameters(
+        product_id=product_id,
+        name=f"{spec.name} contribution",
+        billing_cycles=[
+            BillingCycle(
+                frequency=Frequency(interval_unit=spec.cycle_unit.value, interval_count=1),
+                tenure_type="REGULAR",
+                sequence=1,
+                total_cycles=spec.member_count,
+                pricing_scheme=PricingScheme(
+                    fixed_price=PlanMoney(
+                        currency_code=spec.currency, value=f"{spec.contribution_amount:.2f}"
+                    )
+                ),
+            )
+        ],
+        payment_preferences=preferences,
+    )
+
+
+def _plan_facts(spec: CircleSpec, reserve_pct: Decimal, circle_id: str | None) -> str:
+    plan = _plan_params(spec, "PENDING", reserve_pct, circle_id)
+    return (
+        f"Circle name: {spec.name}\n"
+        f"Product description: {PRODUCT_DESCRIPTION}\n"
+        f"Plan parameters: {plan.model_dump_json(exclude_none=True)}"
+    )
+
+
+async def _label_plan(
+    models: Sequence[ToolPlanModel],
+    spec: CircleSpec,
+    reserve_pct: Decimal,
+    circle_id: str | None,
+) -> str:
+    """One tool-planning call. The result only labels the decision; it never drives execution."""
+    if not models:
+        return DETERMINISTIC
+    answered: list[str] = []
+    declarations = tool_declarations(_CREATE_TOOLS)
+    facts = _plan_facts(spec, reserve_pct, circle_id)
+
+    async def attempt(model: ToolPlanModel, _timeout: float) -> list[ToolCall]:
+        calls = await model.generate_tool_calls(
+            PLAN_SYSTEM_PROMPT, facts, declarations, _CREATE_TOOLS
+        )
+        answered.append(model.name)
+        return calls
+
+    proposed = await run_with_failover(
+        models,
+        attempt,
+        purpose="circle_agent.plan",
+        budget_seconds=LLM_BUDGET_SECONDS,
+        provider_timeout=LLM_PROVIDER_TIMEOUT_SECONDS,
+    )
+    if not proposed:
+        return DETERMINISTIC
+    # The model cannot know the product id yet, so compare against its own placeholder.
+    placeholder = next(
+        (
+            str(c.args.get("product_id", ""))
+            for c in proposed
+            if c.name == ToolName.CREATE_SUBSCRIPTION_PLAN.value
+        ),
+        "",
+    )
+    canonical = [
+        (ToolName.CREATE_PRODUCT.value, _product_params(spec)),
+        (
+            ToolName.CREATE_SUBSCRIPTION_PLAN.value,
+            _plan_params(spec, placeholder, reserve_pct, circle_id),
+        ),
+    ]
+    return answered[-1] if validate_tool_plan(proposed, canonical) else DETERMINISTIC
+
+
+async def _confirmed_turn(
+    spec: CircleSpec,
+    inner: ToolExecutor,
+    plan_models: Sequence[ToolPlanModel] | None,
+    reserve_pct: Decimal,
+    circle_id: str | None,
+) -> CircleAgentTurn:
+    models = plan_models if plan_models is not None else default_models()
+    source = await _label_plan(models, spec, reserve_pct, circle_id)
+    key = _idempotency_key(spec, reserve_pct)
+    guarded = GuardedExecutor(AgentName.CIRCLE_AGENT, inner)
+    product = await guarded.call(
+        ToolName.CREATE_PRODUCT,
+        _product_params(spec),
+        request_id=request_id(key, ToolName.CREATE_PRODUCT.value),
+    )
+    product_id = product.get("id")
+    if not isinstance(product_id, str) or not product_id:
+        raise RuntimeError("PayPal returned no product id")
+    plan = await guarded.call(
+        ToolName.CREATE_SUBSCRIPTION_PLAN,
+        _plan_params(spec, product_id, reserve_pct, circle_id),
+        request_id=request_id(key, ToolName.CREATE_SUBSCRIPTION_PLAN.value),
+    )
+    plan_id = plan.get("id")
+    if not isinstance(plan_id, str) or not plan_id:
+        raise RuntimeError("PayPal returned no plan id")
+    return CircleAgentTurn(
+        reply=f"Done. PayPal product {product_id} and plan {plan_id} are ready.",
+        spec=spec,
+        tool_calls=list(guarded.records),
+        needs_confirmation=False,
+        agent_decision=build_decision(
+            AgentName.CIRCLE_AGENT,
+            circle_id=circle_id,
+            model=source,
+            rationale=(
+                "Organiser confirmed the spec; created the PayPal product and plan from "
+                "engine-built parameters."
+            ),
+            tool_calls=guarded.records,
+        ),
+    )
+
+
+def paypal_references(turn: CircleAgentTurn) -> PayPalReferences:
+    """Product and plan ids recorded by a confirmed turn (empty when none were created)."""
+    found: dict[ToolName, str] = {}
+    for call in turn.tool_calls:
+        summary = call.result_summary
+        if summary and not summary.startswith("failed:"):
+            found[call.name] = summary
+    return PayPalReferences(
+        product_id=found.get(ToolName.CREATE_PRODUCT),
+        plan_id=found.get(ToolName.CREATE_SUBSCRIPTION_PLAN),
     )

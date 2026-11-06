@@ -10,10 +10,19 @@ from app.ai.circle_agent import (
     circle_agent_turn,
     extract_draft_regex,
     missing_fields,
+    paypal_references,
 )
-from app.schemas.contracts import ChatMessage, ChatRole, CycleUnit
+from app.ai.llm import ToolCall as ProposedCall
+from app.schemas.contracts import (
+    ChatMessage,
+    ChatRole,
+    CircleAgentTurn,
+    CircleSpec,
+    CycleUnit,
+    PayPalReferences,
+)
 
-from .fakes import FakeExecutor, FakeJsonModel
+from .fakes import FakeExecutor, FakeJsonModel, FakeToolPlanModel
 
 TODAY = date(2026, 10, 28)
 
@@ -231,3 +240,211 @@ async def test_llm_bad_amount_names_the_field() -> None:
         _user("hi"), False, today=TODAY, json_models=[FakeJsonModel(bad, name="g")]
     )
     assert turn.spec is None and "contribution_amount" in turn.reply
+
+
+PRODUCT_DESC = "Gam'eya rotating savings circle"
+SPEC = CircleSpec(
+    name="Cairo Crew",
+    member_count=6,
+    contribution_amount=Decimal("100.00"),
+    cycle_unit=CycleUnit.MONTH,
+    start_date=date(2026, 11, 1),
+)
+
+
+def _proposed_plan(value: str = "100.00") -> list[ProposedCall]:
+    return [
+        ProposedCall("create_product", {"name": "Cairo Crew", "description": PRODUCT_DESC}),
+        ProposedCall(
+            "create_subscription_plan",
+            {
+                "product_id": "PENDING",
+                "name": "Cairo Crew contribution",
+                "billing_cycles": [
+                    {
+                        "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+                        "tenure_type": "REGULAR",
+                        "sequence": 1,
+                        "total_cycles": 6,
+                        "pricing_scheme": {"fixed_price": {"currency_code": "USD", "value": value}},
+                    }
+                ],
+                "payment_preferences": {
+                    "auto_bill_outstanding": True,
+                    "payment_failure_threshold": 1,
+                },
+            },
+        ),
+    ]
+
+
+async def _confirm(
+    spec: CircleSpec = SPEC,
+    executor: FakeExecutor | None = None,
+    plan_models: list[FakeToolPlanModel] | None = None,
+    reserve_pct: Decimal = Decimal("0"),
+) -> tuple[CircleAgentTurn, FakeExecutor]:
+    executor = executor or FakeExecutor()
+    turn = await circle_agent_turn(
+        _user("6 friends, $100 a month, starting 1 November"),
+        True,
+        confirmed_spec=spec,
+        executor=executor,
+        today=TODAY,
+        plan_models=plan_models if plan_models is not None else [],
+        reserve_pct=reserve_pct,
+    )
+    return turn, executor
+
+
+async def test_confirm_creates_product_then_plan_with_reserve_setup_fee() -> None:
+    turn, executor = await _confirm(reserve_pct=Decimal("3"))
+    assert [c[0] for c in executor.calls] == ["create_product", "create_subscription_plan"]
+    product = executor.calls[0][1].model_dump(exclude_none=True)
+    assert product == {"name": "Cairo Crew", "type": "SERVICE", "description": PRODUCT_DESC}
+    plan = executor.calls[1][1].model_dump(exclude_none=True)
+    assert plan["product_id"] == "FAKE-00000001"
+    assert plan["name"] == "Cairo Crew contribution"
+    assert plan["billing_cycles"] == [
+        {
+            "frequency": {"interval_unit": "MONTH", "interval_count": 1},
+            "tenure_type": "REGULAR",
+            "sequence": 1,
+            "total_cycles": 6,
+            "pricing_scheme": {"fixed_price": {"currency_code": "USD", "value": "100.00"}},
+        }
+    ]
+    assert plan["payment_preferences"] == {
+        "auto_bill_outstanding": True,
+        "payment_failure_threshold": 1,
+        "setup_fee": {"currency_code": "USD", "value": "18.00"},
+        "setup_fee_failure_action": "CANCEL",
+    }
+    assert turn.reply == "Done. PayPal product FAKE-00000001 and plan FAKE-00000002 are ready."
+    assert turn.spec == SPEC
+    assert turn.needs_confirmation is False
+
+
+async def test_zero_reserve_omits_setup_fee_and_action() -> None:
+    _, executor = await _confirm()
+    prefs = executor.calls[1][1].model_dump(exclude_none=True)["payment_preferences"]
+    assert prefs == {"auto_bill_outstanding": True, "payment_failure_threshold": 1}
+
+
+async def test_weekly_spec_uses_week_interval() -> None:
+    weekly = SPEC.model_copy(update={"cycle_unit": CycleUnit.WEEK})
+    _, executor = await _confirm(spec=weekly)
+    cycle = executor.calls[1][1].model_dump()["billing_cycles"][0]
+    assert cycle["frequency"]["interval_unit"] == "WEEK"
+
+
+async def test_confirm_executes_canonical_even_if_model_alters_amount() -> None:
+    model = FakeToolPlanModel(_proposed_plan("1000.00"), name="gemini:x")
+    turn, executor = await _confirm(plan_models=[model])
+    plan = executor.calls[1][1].model_dump()
+    assert plan["billing_cycles"][0]["pricing_scheme"]["fixed_price"]["value"] == "100.00"
+    assert turn.agent_decision is not None and turn.agent_decision.model == "deterministic"
+    assert turn.tool_calls[0].result_summary == "FAKE-00000001"
+
+
+async def test_matching_model_plan_is_labelled_with_the_provider() -> None:
+    model = FakeToolPlanModel(_proposed_plan(), name="gemini:x")
+    turn, _ = await _confirm(plan_models=[model])
+    assert turn.agent_decision is not None and turn.agent_decision.model == "gemini:x"
+
+
+async def test_matching_model_plan_with_reserve_fee_is_labelled() -> None:
+    calls = _proposed_plan()
+    prefs = calls[1].args["payment_preferences"]
+    prefs["setup_fee"] = {"currency_code": "USD", "value": "18.00"}
+    prefs["setup_fee_failure_action"] = "CANCEL"
+    turn, _ = await _confirm(
+        plan_models=[FakeToolPlanModel(calls, name="gemini:x")], reserve_pct=Decimal("3")
+    )
+    assert turn.agent_decision is not None and turn.agent_decision.model == "gemini:x"
+
+
+async def test_model_dropping_the_setup_fee_is_deterministic() -> None:
+    model = FakeToolPlanModel(_proposed_plan(), name="gemini:x")  # no fee proposed
+    turn, executor = await _confirm(plan_models=[model], reserve_pct=Decimal("3"))
+    assert turn.agent_decision is not None and turn.agent_decision.model == "deterministic"
+    fee = executor.calls[1][1].model_dump(exclude_none=True)["payment_preferences"]["setup_fee"]
+    assert fee["value"] == "18.00"
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        FakeToolPlanModel(error=RuntimeError("down"), name="gemini:x"),
+        FakeToolPlanModel([], name="gemini:x"),
+    ],
+)
+async def test_model_failure_or_empty_plan_is_deterministic(model: FakeToolPlanModel) -> None:
+    turn, executor = await _confirm(plan_models=[model])
+    assert turn.agent_decision is not None and turn.agent_decision.model == "deterministic"
+    assert len(executor.calls) == 2
+
+
+async def test_confirm_uses_confirmed_spec_not_history() -> None:
+    eight = SPEC.model_copy(update={"member_count": 8})
+    _, executor = await _confirm(spec=eight)  # the history text says 6
+    cycle = executor.calls[1][1].model_dump()["billing_cycles"][0]
+    assert cycle["total_cycles"] == 8
+
+
+async def test_confirm_requires_spec_and_executor() -> None:
+    with pytest.raises(ValueError):
+        await circle_agent_turn(_user("x"), True, executor=FakeExecutor())
+    with pytest.raises(ValueError):
+        await circle_agent_turn(_user("x"), True, confirmed_spec=SPEC)
+
+
+async def test_confirm_twice_same_request_ids() -> None:
+    executor = FakeExecutor()
+    first, _ = await _confirm(executor=executor)
+    second, _ = await _confirm(executor=executor)
+    ids = [c[2] for c in executor.calls]
+    assert ids[:2] == ids[2:]
+    assert ids[0] != ids[1]
+    assert [t.result_summary for t in first.tool_calls] == [
+        t.result_summary for t in second.tool_calls
+    ]
+
+
+async def test_request_ids_depend_on_reserve_pct() -> None:
+    executor = FakeExecutor()
+    await _confirm(executor=executor, reserve_pct=Decimal("3"))
+    await _confirm(executor=executor, reserve_pct=Decimal("5"))
+    await _confirm(executor=executor, reserve_pct=Decimal("3.00"))
+    ids = [c[2] for c in executor.calls]
+    assert not set(ids[:2]) & set(ids[2:4])  # different reserve, different request ids
+    assert ids[:2] == ids[4:]  # same value, however it is written
+
+
+async def test_request_ids_depend_on_spec() -> None:
+    executor = FakeExecutor()
+    await _confirm(executor=executor)
+    await _confirm(spec=SPEC.model_copy(update={"member_count": 7}), executor=executor)
+    ids = [c[2] for c in executor.calls]
+    assert not set(ids[:2]) & set(ids[2:])
+
+
+async def test_paypal_references_read_ids_by_tool_name() -> None:
+    turn, _ = await _confirm()
+    assert paypal_references(turn) == PayPalReferences(
+        product_id="FAKE-00000001", plan_id="FAKE-00000002"
+    )
+    assert paypal_references(await _turn(*TRANSCRIPTS[0])) == PayPalReferences()
+
+
+async def test_missing_product_id_stops_before_plan() -> None:
+    executor = FakeExecutor(results={"create_product": {"status": "ok"}})
+    with pytest.raises(RuntimeError):
+        await _confirm(executor=executor)
+    assert [c[0] for c in executor.calls] == ["create_product"]
+
+
+async def test_executor_failure_propagates() -> None:
+    executor = FakeExecutor(raises={"create_subscription_plan": RuntimeError("boom")})
+    with pytest.raises(RuntimeError):
+        await _confirm(executor=executor)
