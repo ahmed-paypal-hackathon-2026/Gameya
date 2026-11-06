@@ -9,14 +9,24 @@ from typing import Any
 
 import pytest
 from app.ai.inputs import CycleDue, MemberDue
+from app.ai.paypal_rest import PayPalToolError
 from app.ai.smart_chase import (
     HIGH_RISK_P_LATE,
     NUDGE_WINDOW,
+    ChaseStepFailed,
+    execute_chase,
     plan_chase,
     risk_reasons,
 )
+from app.ai.toolkit_adapter import (
+    CreateInvoiceParameters,
+    SendInvoiceReminderParameters,
+    request_id,
+)
 from app.schemas.contracts import (
+    AgentName,
     ChaseAction,
+    ChasePlan,
     CircleId,
     MemberId,
     ReliabilityFactor,
@@ -24,7 +34,7 @@ from app.schemas.contracts import (
 )
 from pydantic import BaseModel
 
-from .fakes import FakeJsonModel
+from .fakes import FakeExecutor, FakeJsonModel
 
 DUE = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
 
@@ -278,3 +288,135 @@ async def test_noop_makes_no_llm_call() -> None:
     )
     assert plan.action is ChaseAction.NOOP
     assert model.prompts == []
+
+
+# --- execute_chase --------------------------------------------------------------------------
+
+
+async def invoice_plan(**member_over: Any) -> ChasePlan:
+    return await plan_chase(member(**member_over), cycle(), score(), now=LATE, json_models=[])
+
+
+QR_OK = {"generate_invoice_qr_code": {"qr_code_base64": "iVBORw0KGgo="}}
+
+
+async def test_execute_invoice_sequence_and_note() -> None:
+    plan = await invoice_plan()
+    executor = FakeExecutor(results=QR_OK)
+    result = await execute_chase(plan, executor=executor)
+    assert [c[0] for c in executor.calls] == [
+        "create_invoice",
+        "send_invoice",
+        "generate_invoice_qr_code",
+    ]
+    create = executor.calls[0][1]
+    assert isinstance(create, CreateInvoiceParameters)
+    assert create.note == plan.invoice_note
+    assert create.invoice_number == "GM-01JC4Q8ZK3-R1"
+    assert create.primary_recipients[0].billing_info.email_address == "omar@example.com"
+    assert create.items[0].unit_amount.value == "100.00"
+    assert create.items[0].name == "Gam'eya contribution, cycle 3"
+    assert result.invoice_id == "FAKE-00000001"
+    assert result.invoice_number == "GM-01JC4Q8ZK3-R1"
+    assert result.qr_code_base64 == "iVBORw0KGgo=" and result.qr_error is None
+    assert result.plan_id == plan.plan_id
+    assert [t.name.value for t in result.tool_calls] == [c[0] for c in executor.calls]
+    assert result.decision.agent is AgentName.SMART_CHASE
+    assert result.decision.tool_calls == result.tool_calls
+
+
+async def test_execute_request_ids_keyed_by_plan_id() -> None:
+    plan = await invoice_plan()
+    executor = FakeExecutor()
+    await execute_chase(plan, executor=executor)
+    assert plan.plan_id is not None
+    for tool, _params, rid in executor.calls:
+        assert rid == request_id(plan.plan_id, tool)
+
+
+async def test_execute_send_failure_then_retry_no_duplicate() -> None:
+    plan = await invoice_plan()
+    executor = FakeExecutor(raises={"send_invoice": PayPalToolError("send_invoice", 0, None)})
+    with pytest.raises(ChaseStepFailed) as info:
+        await execute_chase(plan, executor=executor)
+    failed = info.value
+    assert failed.step == "send_invoice"
+    assert failed.invoice_id == "FAKE-00000001"
+    assert isinstance(failed.__cause__, PayPalToolError)
+    assert [t.name.value for t in failed.tool_calls] == ["create_invoice", "send_invoice"]
+    first_send_rid = executor.calls[1][2]
+
+    executor.raises.clear()
+    executor.calls.clear()
+    result = await execute_chase(plan, executor=executor, attempt_invoice_id=failed.invoice_id)
+    names = [c[0] for c in executor.calls]
+    assert "create_invoice" not in names
+    assert names == ["send_invoice", "generate_invoice_qr_code"]
+    assert executor.calls[0][2] == first_send_rid
+    assert result.invoice_id == "FAKE-00000001"
+
+
+async def test_execute_create_failure_has_no_invoice_id() -> None:
+    plan = await invoice_plan()
+    executor = FakeExecutor(raises={"create_invoice": RuntimeError("boom")})
+    with pytest.raises(ChaseStepFailed) as info:
+        await execute_chase(plan, executor=executor)
+    assert info.value.step == "create_invoice"
+    assert info.value.invoice_id is None
+    assert [c[0] for c in executor.calls] == ["create_invoice"]
+
+
+async def test_qr_failure_is_soft() -> None:
+    plan = await invoice_plan()
+    executor = FakeExecutor(
+        raises={"generate_invoice_qr_code": PayPalToolError("generate_invoice_qr_code", 500, None)}
+    )
+    result = await execute_chase(plan, executor=executor)
+    assert result.qr_code_base64 is None
+    assert result.qr_error == "PayPalToolError"
+    assert result.invoice_id == "FAKE-00000001"
+
+
+async def test_execute_reminder_uses_note() -> None:
+    plan = await invoice_plan(open_invoice_id="INV2-ABCD", invoice_attempts=1)
+    assert plan.action is ChaseAction.REMINDER
+    executor = FakeExecutor()
+    result = await execute_chase(plan, executor=executor)
+    assert [c[0] for c in executor.calls] == ["send_invoice_reminder"]
+    params = executor.calls[0][1]
+    assert isinstance(params, SendInvoiceReminderParameters)
+    assert params.invoice_id == "INV2-ABCD"
+    assert params.note == plan.invoice_note
+    assert result.invoice_id == "INV2-ABCD"
+    assert result.qr_code_base64 is None
+
+
+async def test_execute_reminder_failure_raises_step() -> None:
+    plan = await invoice_plan(open_invoice_id="INV2-ABCD", invoice_attempts=1)
+    executor = FakeExecutor(raises={"send_invoice_reminder": RuntimeError("x")})
+    with pytest.raises(ChaseStepFailed) as info:
+        await execute_chase(plan, executor=executor)
+    assert info.value.step == "send_invoice_reminder"
+    assert info.value.invoice_id == "INV2-ABCD"
+
+
+async def test_execute_rejects_nudge_and_none() -> None:
+    nudge = await plan_chase(
+        member(), cycle(), score(0.8), now=DUE - timedelta(days=1), json_models=[]
+    )
+    noop = await plan_chase(
+        member(unpaid_amount="0.00"), cycle(), score(), now=LATE, json_models=[]
+    )
+    executor = FakeExecutor()
+    for plan in (nudge, noop):
+        with pytest.raises(ValueError):
+            await execute_chase(plan, executor=executor)
+    assert executor.calls == []
+
+
+async def test_execute_requires_plan_id() -> None:
+    plan = (await invoice_plan()).model_copy(update={"plan_id": None})
+    executor = FakeExecutor()
+    with pytest.raises(ValueError):
+        await execute_chase(plan, executor=executor)
+    assert executor.calls == []

@@ -12,25 +12,44 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..schemas.contracts import (
+    AgentDecision,
     AgentName,
     ChaseAction,
     ChasePlan,
     ReliabilityScore,
+    ToolName,
 )
+from ..schemas.contracts import ToolCall as AuditToolCall
 from .guardrails import build_decision, cap_amount, prose_numbers_ok, wrap_untrusted
 from .ids import new_id
 from .inputs import CycleDue, MemberDue
 from .llm import JsonModel, default_models, run_with_failover
 from .prompts.smart_chase import SYSTEM_PROMPT, TEMPLATES, ChaseKind
+from .toolkit_adapter import (
+    BillingInfo,
+    CreateInvoiceParameters,
+    GenerateInvoiceQrCodeParameters,
+    GuardedExecutor,
+    Item,
+    PlanMoney,
+    PrimaryRecipient,
+    SendInvoiceParameters,
+    SendInvoiceReminderParameters,
+    ToolExecutor,
+    request_id,
+)
 
 __all__ = [
+    "ChaseResult",
+    "ChaseStepFailed",
     "GRACE_PERIOD",
     "HIGH_RISK_P_LATE",
     "NUDGE_WINDOW",
     "plan_chase",
+    "execute_chase",
     "risk_reasons",
 ]
 
@@ -237,3 +256,152 @@ async def _build(
     if action is ChaseAction.REMINDER:
         fields["invoice_id"] = member.open_invoice_id
     return ChasePlan.model_validate(fields)
+
+
+class ChaseStepFailed(RuntimeError):  # noqa: N818 - name fixed by the interface
+    """A PayPal step of `execute_chase` failed; carries what is needed to retry safely."""
+
+    def __init__(
+        self,
+        step: str,
+        message: str,
+        *,
+        invoice_id: str | None,
+        tool_calls: list[AuditToolCall],
+    ) -> None:
+        super().__init__(f"{step}: {message}")
+        self.step = step
+        self.invoice_id = invoice_id
+        self.tool_calls = tool_calls
+
+
+class ChaseResult(BaseModel):
+    """Outcome of `execute_chase`: PayPal references plus the audit record."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plan_id: str
+    invoice_id: str
+    invoice_number: str | None = None
+    qr_code_base64: str | None = None
+    qr_error: str | None = None
+    tool_calls: list[AuditToolCall]
+    decision: AgentDecision
+
+
+def _invoice_params(plan: ChasePlan) -> CreateInvoiceParameters:
+    if (
+        plan.invoice_amount is None
+        or plan.invoice_note is None
+        or plan.invoice_number is None
+        or not plan.recipient_email
+    ):
+        raise ValueError("invoice plan is missing amount, note, number or recipient email")
+    return CreateInvoiceParameters(
+        currency_code="USD",
+        invoice_number=plan.invoice_number,
+        note=plan.invoice_note,
+        primary_recipients=[
+            PrimaryRecipient(billing_info=BillingInfo(email_address=plan.recipient_email))
+        ],
+        items=[
+            Item(
+                name=f"Gam'eya contribution, cycle {plan.cycle_index}",
+                quantity="1",
+                unit_amount=PlanMoney(currency_code="USD", value=f"{plan.invoice_amount:.2f}"),
+            )
+        ],
+    )
+
+
+async def execute_chase(
+    plan: ChasePlan,
+    *,
+    executor: ToolExecutor,
+    attempt_invoice_id: str | None = None,
+) -> ChaseResult:
+    """Run an approved INVOICE or REMINDER plan through the guarded toolkit executor.
+
+    Pass `attempt_invoice_id` (from `ChaseStepFailed.invoice_id`) to retry without creating a
+    second invoice. Request ids are keyed by `plan.plan_id`, so a retry reuses them.
+    """
+    if plan.action not in (ChaseAction.INVOICE, ChaseAction.REMINDER):
+        raise ValueError(f"cannot execute a {plan.action.value} plan")
+    if not plan.plan_id:
+        raise ValueError("plan has no plan_id")
+    key = plan.plan_id
+    guarded = GuardedExecutor(AgentName.SMART_CHASE, executor)
+
+    async def step(tool: ToolName, params: BaseModel, invoice_id: str | None) -> dict[str, Any]:
+        try:
+            return await guarded.call(tool, params, request_id=request_id(key, tool.value))
+        except Exception as exc:
+            raise ChaseStepFailed(
+                tool.value,
+                type(exc).__name__,
+                invoice_id=invoice_id,
+                tool_calls=list(guarded.records),
+            ) from exc
+
+    qr_code: str | None = None
+    qr_error: str | None = None
+    if plan.action is ChaseAction.REMINDER:
+        if not plan.invoice_id or plan.invoice_note is None:
+            raise ValueError("reminder plan is missing invoice_id or note")
+        invoice_id = plan.invoice_id
+        await step(
+            ToolName.SEND_INVOICE_REMINDER,
+            SendInvoiceReminderParameters(invoice_id=invoice_id, note=plan.invoice_note),
+            invoice_id,
+        )
+    else:
+        params = _invoice_params(plan)
+        found = attempt_invoice_id
+        if found is None:
+            created = await step(ToolName.CREATE_INVOICE, params, None)
+            new_id_value = created.get("id")
+            if not isinstance(new_id_value, str) or not new_id_value:
+                raise ChaseStepFailed(
+                    ToolName.CREATE_INVOICE.value,
+                    "PayPal returned no id",
+                    invoice_id=None,
+                    tool_calls=list(guarded.records),
+                )
+            found = new_id_value
+        invoice_id = found
+        await step(ToolName.SEND_INVOICE, SendInvoiceParameters(invoice_id=invoice_id), invoice_id)
+        try:
+            qr = await guarded.call(
+                ToolName.GENERATE_INVOICE_QR_CODE,
+                GenerateInvoiceQrCodeParameters(invoice_id=invoice_id),
+                request_id=request_id(key, ToolName.GENERATE_INVOICE_QR_CODE.value),
+            )
+        except Exception as exc:  # noqa: BLE001 - the QR is a nicety; the invoice is already sent
+            qr_error = type(exc).__name__
+        else:
+            value = qr.get("qr_code_base64")
+            if isinstance(value, str) and value:
+                qr_code = value
+            else:
+                qr_error = "empty QR response"
+
+    prior = plan.agent_decision
+    return ChaseResult(
+        plan_id=key,
+        invoice_id=invoice_id,
+        invoice_number=plan.invoice_number,
+        qr_code_base64=qr_code,
+        qr_error=qr_error,
+        tool_calls=list(guarded.records),
+        decision=build_decision(
+            AgentName.SMART_CHASE,
+            circle_id=prior.circle_id if prior else None,
+            cycle_index=plan.cycle_index,
+            model=prior.model if prior else DETERMINISTIC,
+            rationale=(
+                f"Executed approved {plan.action.value} for invoice {invoice_id} "
+                "through the guarded toolkit."
+            ),
+            tool_calls=guarded.records,
+        ),
+    )
