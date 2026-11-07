@@ -223,6 +223,17 @@ async def test_guarded_executor_blocks_disallowed_tool() -> None:
     assert guarded.records == []
 
 
+async def test_guarded_executor_rejects_mismatched_params() -> None:
+    fake = FakeExecutor()
+    guarded = GuardedExecutor(AgentName.SMART_CHASE, fake)
+    with pytest.raises(TypeError):
+        await guarded.call(
+            "send_invoice_reminder", SendInvoiceParameters(invoice_id="INV2-1"), request_id="r"
+        )
+    assert fake.calls == []
+    assert guarded.records == []
+
+
 async def test_guarded_executor_blocks_agents_without_tools() -> None:
     fake = FakeExecutor()
     guarded = GuardedExecutor(AgentName.MEDIATION, fake)

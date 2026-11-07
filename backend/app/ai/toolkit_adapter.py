@@ -282,6 +282,11 @@ class GuardedExecutor:
     ) -> dict[str, Any]:
         check_tool_allowed(self._agent, tool)
         name = ToolName(tool.value if isinstance(tool, ToolName) else tool)
+        expected = TOOL_PARAMS.get(name.value)
+        if expected is not None and not isinstance(params, expected):
+            raise TypeError(
+                f"tool {name.value!r} needs {expected.__name__}, got {type(params).__name__}"
+            )
         arguments = _safe_arguments(params)
         try:
             result = await self._inner.call(name.value, params, request_id=request_id)
