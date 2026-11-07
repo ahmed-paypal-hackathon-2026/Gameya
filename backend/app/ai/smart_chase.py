@@ -53,6 +53,7 @@ __all__ = [
     "ChaseStepFailed",
     "GRACE_PERIOD",
     "HIGH_RISK_P_LATE",
+    "MAX_REMINDERS_PER_CYCLE",
     "NUDGE_WINDOW",
     "plan_chase",
     "execute_chase",
@@ -62,6 +63,7 @@ __all__ = [
 HIGH_RISK_P_LATE = Decimal("0.50")
 NUDGE_WINDOW = timedelta(days=3)
 GRACE_PERIOD = timedelta(days=1)
+MAX_REMINDERS_PER_CYCLE = 3  # matches Leash's default max_reminders_per_cycle
 LLM_BUDGET_SECONDS = 6.0
 LLM_PROVIDER_TIMEOUT_SECONDS = 5.0
 MAX_MESSAGE_CHARS = 600
@@ -206,6 +208,8 @@ async def plan_chase(
     if now < due_at + GRACE_PERIOD:
         return noop("Inside the one-day grace period.")
     if member.open_invoice_id:
+        if member.reminders_sent >= MAX_REMINDERS_PER_CYCLE:
+            return noop("Reminder cap reached.")
         return await _build(
             ChaseAction.REMINDER,
             "REMINDER",

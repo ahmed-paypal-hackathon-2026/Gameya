@@ -12,6 +12,7 @@ from app.ai.inputs import CycleDue, MemberDue
 from app.ai.paypal_rest import PayPalToolError
 from app.ai.smart_chase import (
     HIGH_RISK_P_LATE,
+    MAX_REMINDERS_PER_CYCLE,
     NUDGE_WINDOW,
     ChaseStepFailed,
     execute_chase,
@@ -151,6 +152,34 @@ async def test_reminder_when_invoice_open() -> None:
     assert plan.invoice_id == "INV2-ABCD"
     assert plan.invoice_note
     assert plan.invoice_amount is None
+
+
+async def test_reminder_below_cap_still_sent() -> None:
+    plan = await plan_chase(
+        member(open_invoice_id="INV2-ABCD", invoice_attempts=1, reminders_sent=2),
+        cycle(),
+        score(),
+        now=DUE + timedelta(days=2),
+        json_models=[],
+    )
+    assert plan.action is ChaseAction.REMINDER
+
+
+async def test_reminder_cap_reached_is_noop_without_model_call() -> None:
+    assert MAX_REMINDERS_PER_CYCLE == 3
+    model = FakeJsonModel(result=ChaseText(text="Please pay soon."))
+    plan = await plan_chase(
+        member(open_invoice_id="INV2-ABCD", invoice_attempts=1, reminders_sent=3),
+        cycle(),
+        score(),
+        now=DUE + timedelta(days=2),
+        json_models=[model],
+    )
+    assert plan.action is ChaseAction.NOOP
+    assert plan.plan_id is None
+    assert plan.agent_decision is not None
+    assert "Reminder cap reached." in plan.agent_decision.rationale
+    assert model.prompts == []
 
 
 async def test_invoice_amount_over_contribution_raises() -> None:
