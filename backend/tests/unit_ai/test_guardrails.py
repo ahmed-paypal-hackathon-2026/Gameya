@@ -9,10 +9,12 @@ from app.ai.guardrails import (
     build_decision,
     cap_amount,
     check_tool_allowed,
+    has_link_or_contact,
     normalise_digits,
     prose_numbers_ok,
     wrap_untrusted,
 )
+from app.ai.prompts.smart_chase import TEMPLATES
 from app.schemas.contracts import AgentName, ToolCall, ToolName
 
 
@@ -90,6 +92,45 @@ def test_normalise_digits() -> None:
 )
 def test_prose_numbers_ok(text: str, allowed: set[str], expected: bool) -> None:
     assert prose_numbers_ok(text, allowed) is expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "pay at paypal-help.me/x",
+        "see bit.ly/abc",
+        "message wa.me/123",
+        "go to evil.example/pay now",
+        "visit Paypal-Help.COM today",
+        "ｈｔｔｐｓ：／／evil.test",
+        "mail me ｏｍａｒ＠evil.test",
+    ],
+)
+def test_has_link_or_contact_rejects(text: str) -> None:
+    assert has_link_or_contact(text)
+
+
+_DUE = "2026-11-01"
+_TEMPLATE_ARGS = {
+    "name": "Omar",
+    "amount": "100.00",
+    "cycle_index": 3,
+    "due": _DUE,
+    "circle": "Family Circle",
+}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Pay $100.00",
+        "100.00 by 2026-11-01",
+        "e.g. cycle 3, i.e. now.",
+        *(t.format(**_TEMPLATE_ARGS) for t in TEMPLATES.values()),
+    ],
+)
+def test_has_link_or_contact_accepts(text: str) -> None:
+    assert not has_link_or_contact(text)
 
 
 def test_cap_amount() -> None:

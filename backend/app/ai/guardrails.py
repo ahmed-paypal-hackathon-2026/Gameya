@@ -7,6 +7,7 @@ the amount cap and decision records. Pure functions: no I/O, no DB, no PayPal.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -106,12 +107,24 @@ def prose_numbers_ok(text: str, allowed: Iterable[str]) -> bool:
     return all(_canonical(t) in allowed_set for t in _NUMBER_RE.findall(normalise_digits(text)))
 
 
-_LINK_OR_CONTACT_RE = re.compile(r"http|www\.|@", re.IGNORECASE)
+# Common TLDs that make a bare `label.tld` a link even with no path. Any other
+# `label.tld` shape counts only when a `/` follows, so "Thanks.Bye" and "e.g." pass.
+_TLDS = (
+    "com|net|org|edu|gov|info|biz|io|co|me|ly|app|dev|xyz|top|site|online|shop|store|club|live"
+    "|link|click|help|support|pay|page|cc|tk|ml|ga|cf|gq|gl|gg|to|ru|cn|us|uk|eg|ae|sa|in|example"
+)
+_LINK_OR_CONTACT_RE = re.compile(
+    r"http|www\.|@"
+    rf"|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:{_TLDS})\b"
+    r"|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/",
+    re.IGNORECASE,
+)
 
 
 def has_link_or_contact(text: str) -> bool:
-    """True if model text carries a URL or an email address (a phishing vector)."""
-    return _LINK_OR_CONTACT_RE.search(text) is not None
+    """True if model text carries a URL, a scheme-less domain or an email address
+    (a phishing vector). Full-width forms are folded with NFKC first."""
+    return _LINK_OR_CONTACT_RE.search(unicodedata.normalize("NFKC", text)) is not None
 
 
 _CENT = Decimal("0.01")
