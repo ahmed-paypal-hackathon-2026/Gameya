@@ -35,7 +35,7 @@ from .test_injection_suite import BASE_CHAT, _cycle, _member
 
 M = TypeVar("M", bound=BaseModel)
 
-MAX_SECONDS = 0.2
+MAX_SECONDS = 0.35  # below the 0.4 s transient-retry sleep, above CI jitter
 # Short enough that the failover loop does not sleep before its transient retry (0.4 s).
 SHORT_BUDGET = 0.85
 DUE = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
