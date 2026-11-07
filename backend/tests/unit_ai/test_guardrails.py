@@ -88,6 +88,8 @@ def test_normalise_digits() -> None:
         ("Pay $1,000 now", {"1000.00"}, True),
         ("Pay 100", {"100.00"}, True),
         ("Pay 100.50", {"100"}, False),
+        ("ادفع ١١٫٠١", {"11", "01"}, False),
+        ("ادفع ١٠٠٫٠٠", {"100.00"}, True),
     ],
 )
 def test_prose_numbers_ok(text: str, allowed: set[str], expected: bool) -> None:

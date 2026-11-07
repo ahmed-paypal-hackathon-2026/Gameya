@@ -260,6 +260,14 @@ async def test_message_rejects_invented_number_uses_template() -> None:
     assert plan.invoice_note == EN_INVOICE
 
 
+async def test_arabic_decimal_separator_invented_amount_uses_template() -> None:
+    # "٣٫١٠" is 3.10; read as separate digits it would pass as cycle 3 and day 10.
+    model = FakeJsonModel(ChaseText(text="أهلاً عمر، ادفع ٣٫١٠ دولار من فضلك."))
+    plan = await plan_chase(member(), cycle(), score(), now=LATE, json_models=[model])
+    assert plan.message_source == "template"
+    assert plan.invoice_note == EN_INVOICE
+
+
 async def test_nudge_template_exact() -> None:
     plan = await plan_chase(
         member(), cycle(), score(0.8), now=DUE - timedelta(days=1), json_models=[]

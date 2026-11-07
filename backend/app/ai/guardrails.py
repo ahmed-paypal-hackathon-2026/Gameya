@@ -73,13 +73,14 @@ def check_tool_allowed(agent: AgentName, tool: ToolName | str) -> None:
 
 
 _DIGIT_TABLE = str.maketrans(
-    "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹",
-    "01234567890123456789",
+    "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹٫٬",
+    "01234567890123456789.,",
 )
 
 
 def normalise_digits(text: str) -> str:
-    """Map Arabic-Indic and Eastern Arabic-Indic digits to 0-9."""
+    """Map Arabic-Indic and Eastern Arabic-Indic digits to 0-9, and the Arabic
+    decimal (U+066B) and thousands (U+066C) separators to `.` and `,`."""
     return text.translate(_DIGIT_TABLE)
 
 
