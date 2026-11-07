@@ -104,7 +104,6 @@ async def test_live_product_plan_invoice_qr() -> None:
         assert prefs["setup_fee"]["value"] == "0.03"
         assert prefs["payment_failure_threshold"] == 1
         assert prefs["auto_bill_outstanding"] is True
-        print("stored plan payment_preferences:", prefs)
 
         invoice_number = f"GM-LIVE{suffix}-R1"
         invoice = await executor.call(
@@ -152,12 +151,8 @@ async def test_live_product_plan_invoice_qr() -> None:
             request_id=request_id(key, "generate_invoice_qr_code"),
         )
         raw_qr = qr["qr_code_base64"]
-        print(f"qr_len={len(raw_qr)} qr_head={raw_qr[:12]!r}")
         assert base64.b64decode(raw_qr, validate=True).startswith(b"\x89PNG")
 
-        print(f"product_id={product_id}")
-        print(f"plan_id={plan_id}")
-        print(f"invoice_id={invoice_id}")
-        print(f"invoice_number={invoice_number}")
+        print(f"product_id={product_id} plan_id={plan_id} invoice_id={invoice_id}")
     finally:
         await executor.aclose()
