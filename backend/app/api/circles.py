@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Response
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, Response
+
+from ..auth import actor_from_request, require_organiser
 from ..schemas.contracts import (
     AuditResponse,
     CircleAgentChatRequest,
@@ -29,6 +32,11 @@ from ..schemas.contracts import (
     SwapProposal,
 )
 from .fixtures import fixture
+from .leash import Actor
+
+# Reliability, ledger and audit are organiser-only (plan RSK-09): a lateness score
+# must never be readable by other members or by anonymous visitors.
+OrganiserActor = Annotated[Actor, Depends(actor_from_request)]
 
 router = APIRouter(prefix="/api/v1/circles", tags=["circles"])
 agent_router = APIRouter(prefix="/api/v1", tags=["agent"])
@@ -99,19 +107,22 @@ def stress_test(circle_id: str, body: StressTestRequest, response: Response) -> 
 
 
 @router.get("/{circle_id}/ledger", response_model=LedgerResponse)
-def ledger(circle_id: str, response: Response) -> LedgerResponse:
+def ledger(circle_id: str, response: Response, actor: OrganiserActor) -> LedgerResponse:
+    require_organiser(actor, circle_id)
     response.headers.update(DEMO_HEADER)
     return LedgerResponse.model_validate(fixture("circle-ledger"))
 
 
 @router.get("/{circle_id}/audit", response_model=AuditResponse)
-def audit(circle_id: str, response: Response) -> AuditResponse:
+def audit(circle_id: str, response: Response, actor: OrganiserActor) -> AuditResponse:
+    require_organiser(actor, circle_id)
     response.headers.update(DEMO_HEADER)
     return AuditResponse.model_validate(fixture("circle-audit"))
 
 
 @router.get("/{circle_id}/reliability", response_model=ReliabilityResponse)
-def reliability(circle_id: str, response: Response) -> ReliabilityResponse:
+def reliability(circle_id: str, response: Response, actor: OrganiserActor) -> ReliabilityResponse:
+    require_organiser(actor, circle_id)
     response.headers.update(DEMO_HEADER)
     return ReliabilityResponse.model_validate(fixture("circle-reliability"))
 

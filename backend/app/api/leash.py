@@ -108,7 +108,9 @@ def _invalid_policy(errors: list[dict[str, Any]]) -> LeashError:
 
 
 @router.get("/circles/{cid}/leash/policy", response_model=LeashPolicy)
-def get_policy(cid: str, db: DbDep, _actor: ActorDep) -> LeashPolicy:
+def get_policy(cid: str, db: DbDep, actor: ActorDep) -> LeashPolicy:
+    # Checked before the lazy v1 write, so a refused read never creates a row.
+    _require_organiser(actor, cid)
     policy = get_active_policy(db, cid)
     db.commit()  # persist a lazily created v1
     return policy

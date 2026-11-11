@@ -11,8 +11,11 @@ import hmac
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..db import get_db
+from ..db.seed import seed_golden_circle
 from ..schemas.contracts import FastForwardRequest, ResetDemoResponse
 
 
@@ -38,7 +41,7 @@ def fast_forward(cycle_id: str, body: FastForwardRequest, response: Response) ->
 
 
 @router.post("/reset-demo", response_model=ResetDemoResponse)
-def reset_demo(response: Response) -> ResetDemoResponse:
-    response.headers.update({"X-Demo-Fixture": "1"})
-    # The golden story is the single demo circle; WP-1.3 re-seeds rows from scripts/seed_demo.
-    return ResetDemoResponse.model_validate({"reset": True, "circle_id": "circle-golden-01"})
+def reset_demo(db: Annotated[Session, Depends(get_db)]) -> ResetDemoResponse:
+    """Delete and recreate the golden demo circle in the database."""
+    circle_id = seed_golden_circle(db)
+    return ResetDemoResponse.model_validate({"reset": True, "circle_id": circle_id})

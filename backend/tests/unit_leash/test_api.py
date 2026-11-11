@@ -78,7 +78,7 @@ def test_error_envelope_generates_request_id(db: Session) -> None:
 
 
 def test_get_policy_default_v1(db: Session) -> None:
-    r = make_client(db, MEMBER).get("/api/v1/circles/c1/leash/policy")
+    r = make_client(db, ORGANISER).get("/api/v1/circles/c1/leash/policy")
     assert r.status_code == 200
     body = r.json()
     assert body["circle_id"] == "c1" and body["version"] == 1 and body["preset"] == "STANDARD"
@@ -86,7 +86,7 @@ def test_get_policy_default_v1(db: Session) -> None:
     assert body["no_auto_chase_member_ids"] == []
     # Lazily created v1 was committed, so it survives a rollback.
     db.rollback()
-    assert make_client(db, MEMBER).get("/api/v1/circles/c1/leash/policy").json()["version"] == 1
+    assert make_client(db, ORGANISER).get("/api/v1/circles/c1/leash/policy").json()["version"] == 1
 
 
 def test_put_policy_bumps_version(db: Session) -> None:

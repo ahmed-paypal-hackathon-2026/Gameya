@@ -17,6 +17,8 @@ from fastapi import HTTPException, Request
 from .api.fixtures import fixture
 from .api.leash import Actor
 from .config import get_settings
+from .leash import LeashError
+from .schemas.contracts import LeashErrorCode
 
 _SEP = "."
 
@@ -54,6 +56,16 @@ def _organised_circles() -> dict[str, frozenset[str]]:
 def actor_for(persona_id: str) -> Actor:
     member = member_id_for(persona_id)
     return Actor(user_id=member, organiser_of=_organised_circles().get(member, frozenset()))
+
+
+def require_organiser(actor: Actor, circle_id: str) -> None:
+    """Raise Leash's ORGANISER_ONLY error unless the actor organises this circle."""
+    if circle_id not in actor.organiser_of:
+        raise LeashError(
+            LeashErrorCode.ORGANISER_ONLY,
+            "Only the circle organiser can do this.",
+            {"circle_id": circle_id},
+        )
 
 
 def actor_from_request(request: Request) -> Actor:
