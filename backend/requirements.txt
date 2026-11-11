@@ -6,5 +6,6 @@ python-ulid>=2.7
 numpy>=1.26
 scipy>=1.14
 scikit-learn>=1.5
-paypal-agent-toolkit==1.11.0  # verified with the P3 suite; bump deliberately
+httpx>=0.27  # PayPal REST calls (app/ai/paypal_rest.py, services/paypal)
+psycopg[binary]>=3.2  # PostgreSQL driver for Render's database
 google-genai==2.33.0

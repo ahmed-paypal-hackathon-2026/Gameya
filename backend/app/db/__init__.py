@@ -27,9 +27,17 @@ def _tune_sqlite(conn, _record):  # type: ignore[no-untyped-def]
     cursor.close()
 
 
+def normalise_database_url(url: str) -> str:
+    """Point postgres URLs at the psycopg 3 driver (Render hands out `postgres://...`)."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url.removeprefix(prefix)
+    return url
+
+
 def setup_engine(database_url: str) -> Engine:
     global _engine, _SessionLocal
-    _engine = create_engine(database_url, future=True)
+    _engine = create_engine(normalise_database_url(database_url), future=True)
     if _engine.dialect.name == "sqlite":
         event.listen(_engine, "connect", _tune_sqlite)
     _SessionLocal = sessionmaker(bind=_engine, autoflush=False, expire_on_commit=False)

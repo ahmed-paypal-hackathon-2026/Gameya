@@ -1,7 +1,9 @@
 services:
   api:
     build:
-      context: ./backend
+      # The Dockerfile copies backend/ and shared/fixtures, so build from the repo root.
+      context: .
+      dockerfile: backend/Dockerfile
     env_file:
       - .env
     environment:
@@ -11,7 +13,7 @@ services:
     volumes:
       - gameya-db:/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -19,12 +21,16 @@ services:
 
   web:
     build:
-      context: ./frontend
-    environment:
-      - VITE_API_BASE_URL=http://localhost:8000
-      - VITE_USE_MOCKS=${DEMO_MODE:-0}
+      # Repo root: the frontend imports ../../../shared/fixtures.
+      context: .
+      dockerfile: frontend/Dockerfile
+      # Vite bakes VITE_* in at build time, so they are build args, not runtime env.
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_USE_MOCKS: ${DEMO_MODE:-0}
     ports:
-      - "8080:8080"
+      # 5173 is in the API's default dev CORS origins.
+      - "5173:8080"
     depends_on:
       api:
         condition: service_healthy
