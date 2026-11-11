@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from ..schemas.contracts import AgentDecision, AgentName, CircleId, ToolName
@@ -126,6 +126,42 @@ def has_link_or_contact(text: str) -> bool:
     """True if model text carries a URL, a scheme-less domain or an email address
     (a phishing vector). Full-width forms are folded with NFKC first."""
     return _LINK_OR_CONTACT_RE.search(unicodedata.normalize("NFKC", text)) is not None
+
+
+def safe_display_text(value: str, fallback: str) -> str:
+    """A member-chosen name, or `fallback` if it is blank or carries a link or contact.
+
+    Names are printed into real PayPal invoices, so a name like "pay at evil.example"
+    must never reach one, whichever path (model or template) writes the text.
+    """
+    return fallback if not value.strip() or has_link_or_contact(value) else value
+
+
+_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_CYCLE_RE = re.compile(r"(?:\bcycle|للدورة|الدورة|للدوره|الدوره)\s*(\d+)", re.IGNORECASE)
+
+
+def money_text_problem(text: str, *, amount: Decimal, due: date, cycle_number: int) -> str | None:
+    """Why a money message is unsafe, or None. Every number must mean what the engine says.
+
+    A date must be the due date, a number after "cycle" must be this cycle, and every
+    other number must equal the amount due. A set-based check would accept "only $11 is
+    due" when 11 is the day of the month; this one checks each number by its role.
+    """
+    normalised = normalise_digits(text)
+    for found in _DATE_RE.findall(normalised):
+        if found != due.isoformat():
+            return f"date {found} is not the due date"
+    normalised = _DATE_RE.sub(" ", normalised)
+    for match in _CYCLE_RE.finditer(normalised):
+        if int(match.group(1)) != cycle_number:
+            return f"cycle {match.group(1)} is not this cycle"
+    normalised = _CYCLE_RE.sub(" ", normalised)
+    expected = _canonical(f"{amount:.2f}")
+    for token in _NUMBER_RE.findall(normalised):
+        if _canonical(token) != expected:
+            return f"number {token} is not the amount due"
+    return None
 
 
 _CENT = Decimal("0.01")
