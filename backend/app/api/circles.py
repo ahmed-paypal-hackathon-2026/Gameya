@@ -4,21 +4,29 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from ulid import ULID
 
+from ..ai.circle_agent import CircleCreationFailed, circle_agent_turn, paypal_references
+from ..ai.toolkit_adapter import ToolExecutor
 from ..auth import actor_from_request, require_organiser
+from ..db import get_db
 from ..schemas.contracts import (
     AuditResponse,
     CircleAgentChatRequest,
     CircleAgentChatResponse,
     CircleCreateResponse,
     CircleDetail,
+    CircleId,
     CopilotAnswer,
     CopilotQuestionRequest,
     CreateCircleRequest,
     JoinCircleRequest,
     JoinCircleResponse,
     LedgerResponse,
+    MemberId,
     NeedExtraction,
     NeedSubmissionRequest,
     OrderApprovalRequest,
@@ -31,12 +39,16 @@ from ..schemas.contracts import (
     SwapCreateRequest,
     SwapProposal,
 )
+from ..services.circle_data import circle_detail, create_circle_rows, record_decision
+from ..services.paypal.executor import get_tool_executor
 from .fixtures import fixture
 from .leash import Actor
 
 # Reliability, ledger and audit are organiser-only (plan RSK-09): a lateness score
 # must never be readable by other members or by anonymous visitors.
 OrganiserActor = Annotated[Actor, Depends(actor_from_request)]
+LoggedIn = Annotated[Actor, Depends(actor_from_request)]
+DbSession = Annotated[Session, Depends(get_db)]
 
 router = APIRouter(prefix="/api/v1/circles", tags=["circles"])
 agent_router = APIRouter(prefix="/api/v1", tags=["agent"])
@@ -45,14 +57,62 @@ DEMO_HEADER = {"X-Demo-Fixture": "1"}  # transparency: M1 serves the golden stor
 
 
 @router.post("", response_model=CircleCreateResponse)
-def create_circle(body: CreateCircleRequest, response: Response) -> CircleCreateResponse:
-    response.headers.update(DEMO_HEADER)
-    return CircleCreateResponse.model_validate(fixture("circles-create"))
+async def create_circle(
+    body: CreateCircleRequest,
+    actor: LoggedIn,
+    db: DbSession,
+    executor: Annotated[ToolExecutor, Depends(get_tool_executor)],
+) -> CircleCreateResponse | JSONResponse:
+    """The organiser confirmed the card: create the PayPal product + plan, then store the circle.
+
+    The organiser is the logged-in member, never the `organiser_id` the client sent.
+    Nothing is stored unless both PayPal objects were created.
+    """
+    circle_id = f"circle-{str(ULID()).lower()}"
+    spec = body.spec.model_copy(update={"organiser_id": MemberId(actor.user_id)})
+    try:
+        turn = await circle_agent_turn(
+            [],
+            True,
+            confirmed_spec=spec,
+            executor=executor,
+            reserve_pct=body.reserve_pct,
+            circle_id=CircleId(circle_id),
+        )
+    except CircleCreationFailed as exc:
+        return JSONResponse(
+            status_code=502,
+            content={
+                "error": {
+                    "code": "PAYPAL_ERROR",
+                    "message": "PayPal could not create the circle's plan. Nothing was saved.",
+                    "details": {"step": exc.step},
+                }
+            },
+        )
+    refs = paypal_references(turn)
+    create_circle_rows(
+        db,
+        circle_id=circle_id,
+        spec=spec,
+        organiser_id=actor.user_id,
+        reserve_pct=body.reserve_pct,
+        product_id=refs.product_id,
+        plan_id=refs.plan_id,
+    )
+    if turn.agent_decision is not None:
+        record_decision(db, turn.agent_decision, actor.user_id)
+    detail = circle_detail(db, circle_id)
+    assert detail is not None  # just written in this session
+    return CircleCreateResponse(circle=detail, paypal=refs)
 
 
 @router.get("/{circle_id}", response_model=CircleDetail)
-def get_circle(circle_id: str, response: Response) -> CircleDetail:
-    response.headers.update(DEMO_HEADER)
+def get_circle(circle_id: str, response: Response, db: DbSession) -> CircleDetail:
+    detail = circle_detail(db, circle_id)
+    if detail is not None:
+        return detail
+    response.headers.update(DEMO_HEADER)  # not in the database yet: the golden story
     return CircleDetail.model_validate(fixture("circle-get"))
 
 
@@ -128,6 +188,19 @@ def reliability(circle_id: str, response: Response, actor: OrganiserActor) -> Re
 
 
 @agent_router.post("/agent/circle/chat", response_model=CircleAgentChatResponse)
-def agent_chat(body: CircleAgentChatRequest, response: Response) -> CircleAgentChatResponse:
-    response.headers.update(DEMO_HEADER)
-    return CircleAgentChatResponse.model_validate(fixture("agent-circle-chat"))
+async def agent_chat(body: CircleAgentChatRequest, actor: LoggedIn) -> CircleAgentChatResponse:
+    """Fill the circle card from the conversation. This route never calls PayPal:
+    confirming the card is a separate, explicit POST /circles by the organiser."""
+    if body.confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="confirm the circle card with POST /api/v1/circles",
+        )
+    turn = await circle_agent_turn(body.history, False)
+    if turn.spec is not None:
+        turn = turn.model_copy(
+            update={"spec": turn.spec.model_copy(update={"organiser_id": MemberId(actor.user_id)})}
+        )
+    return CircleAgentChatResponse(
+        session_id=body.session_id or f"chat-{str(ULID()).lower()}", turn=turn
+    )

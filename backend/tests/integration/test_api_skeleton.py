@@ -48,20 +48,6 @@ def test_health_matches_contract(client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("method", "path", "body", "fixture_name"),
     [
-        (
-            "post",
-            "/api/v1/circles",
-            {
-                "spec": {
-                    "name": "El Shorbagh",
-                    "member_count": 6,
-                    "contribution_amount": "100.00",
-                    "start_date": "2026-11-01",
-                    "confirmed": True,
-                }
-            },
-            "circles-create",
-        ),
         ("get", "/api/v1/circles/c-golden", None, "circle-get"),
         ("post", "/api/v1/circles/c-golden/join", {"member_id": "persona-karim"}, "circle-join"),
         (
@@ -112,12 +98,6 @@ def test_health_matches_contract(client: TestClient) -> None:
         ("get", "/api/v1/circles/circle-golden-01/ledger", None, "circle-ledger"),
         ("get", "/api/v1/circles/circle-golden-01/audit", None, "circle-audit"),
         ("get", "/api/v1/circles/circle-golden-01/reliability", None, "circle-reliability"),
-        (
-            "post",
-            "/api/v1/agent/circle/chat",
-            {"history": [{"role": "user", "content": "Make a circle of 6 friends, $100 a month."}]},
-            "agent-circle-chat",
-        ),
         (
             "post",
             "/api/v1/cycles/cyc-1/pay-now",

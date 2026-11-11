@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+from collections.abc import Generator
 from functools import cache
+from typing import cast
 
 from fastapi import HTTPException, Request
+from sqlalchemy.orm import Session
 
 from .api.fixtures import fixture
 from .api.leash import Actor
@@ -53,9 +56,30 @@ def _organised_circles() -> dict[str, frozenset[str]]:
     return {member: frozenset({circle["circle_id"]}) for member in organisers}
 
 
+def _db_organised_circles(member_id: str) -> frozenset[str]:
+    """Circles this member organises according to the database (empty if no DB is set up)."""
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from .db import get_db
+    from .services.circle_data import organised_circle_ids
+
+    sessions = cast("Generator[Session, None, None]", get_db())
+    try:
+        session = next(sessions)
+    except RuntimeError:  # engine not configured (unit tests without a database)
+        return frozenset()
+    try:
+        return organised_circle_ids(session, member_id)
+    except SQLAlchemyError:
+        return frozenset()
+    finally:
+        sessions.close()
+
+
 def actor_for(persona_id: str) -> Actor:
     member = member_id_for(persona_id)
-    return Actor(user_id=member, organiser_of=_organised_circles().get(member, frozenset()))
+    organised = _organised_circles().get(member, frozenset()) | _db_organised_circles(member)
+    return Actor(user_id=member, organiser_of=organised)
 
 
 def require_organiser(actor: Actor, circle_id: str) -> None:
