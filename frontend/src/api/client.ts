@@ -189,6 +189,59 @@ export async function getCircle(circleId: CircleId): Promise<CircleDetail> {
     : request<CircleDetail>("GET", circlePath(circleId));
 }
 
+/** What every member may see about the circle: names, schedule and pot sizes. */
+export interface CircleOverview {
+  circle_id: CircleId;
+  name: string;
+  member_count: number;
+  contribution_amount: string;
+  cycle_unit: "MONTH" | "WEEK";
+  start_date: string;
+  current_cycle_index: number;
+  members: (RosterMember & { slot_index: number | null })[];
+  cycles: {
+    cycle_index: number;
+    status: CircleDetail["cycles"][number]["status"];
+    due_date: string;
+    pot_total: string;
+    amount_due: string;
+    recipient_id: MemberId | null;
+    unpaid_count: number;
+  }[];
+}
+
+/**
+ * The circle for the hero and the payout timeline. Like getRoster, it strips every
+ * per-member risk field (lateness, scores, reserve) so none of it reaches a member screen.
+ */
+export async function getCircleOverview(circleId: CircleId): Promise<CircleOverview> {
+  const c = await getCircle(circleId);
+  return {
+    circle_id: c.circle_id,
+    name: c.spec.name,
+    member_count: c.spec.member_count,
+    contribution_amount: c.spec.contribution_amount,
+    cycle_unit: c.spec.cycle_unit === "WEEK" ? "WEEK" : "MONTH",
+    start_date: c.spec.start_date,
+    current_cycle_index: c.current_cycle_index,
+    members: c.members.map(({ member_id, display_name, role, slot_index }) => ({
+      member_id,
+      display_name,
+      role,
+      slot_index,
+    })),
+    cycles: c.cycles.map((y) => ({
+      cycle_index: y.cycle_index,
+      status: y.status,
+      due_date: y.due_date,
+      pot_total: y.pot_total,
+      amount_due: y.amount_due,
+      recipient_id: y.recipient_id,
+      unpaid_count: y.unpaid_members.length,
+    })),
+  };
+}
+
 /** Cycle ids follow the engine's convention: `<circle_id>-c<cycle_index>`. */
 export const cycleIdFor = (circleId: CircleId, cycleIndex: number): string =>
   `${circleId}-c${cycleIndex}`;

@@ -4,6 +4,7 @@
 import type { ReactNode } from "react";
 import type { MemberId, NeedExtraction, OrderProposal } from "../types/contracts";
 import { NEED_CATEGORY_LABEL, formatCost, formatIsoDate } from "../lib/format";
+import { initialOf } from "./CircleHero";
 
 export interface OrderApprovalCardProps {
   proposal: OrderProposal;
@@ -37,11 +38,13 @@ export function OrderApprovalCard({
 
   return (
     <section className="card" aria-labelledby="order-approval-title">
-      <h2 id="order-approval-title">Proposed payout order</h2>
-      <p className="muted">
-        Needs are self-reported. Check that each one looks right before you approve. Need cost
-        shows how far a slot is from what the member asked for; lower is a closer fit.
-      </p>
+      <div className="card__head">
+        <h2 id="order-approval-title">Proposed payout order</h2>
+        <p className="muted">
+          Needs are self-reported. Check that each one looks right before you approve. Need cost
+          shows how far a slot is from what the member asked for; lower is a closer fit.
+        </p>
+      </div>
       {needsUnavailable ? (
         <p className="notice" role="status">
           Members' needs could not be loaded, so they are not shown below.
@@ -59,6 +62,9 @@ export function OrderApprovalCard({
               data-testid={`order-item-${a.member_id}`}
             >
               <div className="order-item__head">
+                <span className="avatar" aria-hidden="true">
+                  {initialOf(name)}
+                </span>
                 <span className="order-item__slot">
                   Slot {a.slot_index + 1} of {total}
                 </span>
