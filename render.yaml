@@ -59,5 +59,6 @@ services:
 databases:
   - name: gameya-db
     databaseName: gameya
-    # Free Postgres expires 30 days after creation; reset-demo reseeds a new one.
+    # Free Postgres expires 30 days after creation: recreate it from this Blueprint; the
+    # API seeds the golden circle on the fresh database at startup (DEMO_MODE=1).
     plan: free

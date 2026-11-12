@@ -38,11 +38,18 @@ from ..ai.toolkit_adapter import (
 )
 from ..db.models import Circle, Contribution, Cycle, Invoice, Membership, Payout
 from ..schemas.contracts import ChaseAction, CircleId, MemberId
-from ..services.circle_data import active_members, record_decision, reliability_scores
+from ..services.circle_data import (
+    active_members,
+    current_proposal,
+    record_decision,
+    reliability_scores,
+)
 from ..services.paypal.invoicing import PAID_STATUSES, InvoiceGateway
 
 CENT = Decimal("0.01")
 SETTLED = frozenset({"PAID", "COVERED"})
+# PayPal accepted the payout batch (one definition, shared with circle_engine).
+PAYOUT_ACCEPTED = frozenset({"PENDING", "PROCESSING", "SUCCESS", "ALREADY_SENT"})
 
 
 UNSENT = "UNSENT"  # PayPal created the invoice but sending it failed
@@ -69,6 +76,19 @@ def require_ready(db: Session, cycle: Cycle, circle: Circle) -> None:
         raise CycleNotReady("approve the payout order before collecting")
     if len(active_members(db, circle.id)) != circle.size_n:
         raise CycleNotReady("fill every seat before collecting")
+    # Members see the current proposal; the money follows the applied order. They must agree,
+    # or a need changed after approval and members would be paid in an order they never saw.
+    shown = current_proposal(db, circle.id)
+    if shown is not None:
+        applied = {
+            c.cycle_index: c.payout_member_id
+            for c in db.scalars(select(Cycle).where(Cycle.circle_id == circle.id)).all()
+        }
+        if {a.slot_index: a.member_id for a in shown.assignments} != applied:
+            raise CycleNotReady(
+                "the payout order changed: every member must approve the new order "
+                "before collecting"
+            )
 
 
 @dataclass(frozen=True)
@@ -217,7 +237,8 @@ async def sync_collection(db: Session, cycle_id: str, gateway: InvoiceGateway) -
     cycle, circle = _cycle_and_circle(db, cycle_id)
     newly_paid = 0
     for invoice in _invoices(db, cycle_id):
-        if not invoice.paypal_invoice_id:
+        # An UNSENT draft keeps its marker: Smart Chase resends it, so it is never re-created.
+        if not invoice.paypal_invoice_id or invoice.status == UNSENT:
             continue
         contribution = _contribution(
             db, cycle, invoice.member_id, circle.contribution_amount.quantize(CENT)
@@ -244,9 +265,7 @@ def _has_received_pot(db: Session, circle_id: str, member_id: str) -> bool:
             Payout.cycle_id.in_(cycle_ids), Payout.recipient_member_id == member_id
         )
     ).all()
-    return any(
-        p.paypal_batch_id or p.status in ("PENDING", "PROCESSING", "SUCCESS") for p in payouts
-    )
+    return any(p.paypal_batch_id or p.status in PAYOUT_ACCEPTED for p in payouts)
 
 
 async def chase_cycle(

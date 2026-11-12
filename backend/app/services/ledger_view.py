@@ -159,7 +159,8 @@ def audit(db: Session, circle_id: str) -> AuditResponse:
                 tool_calls=_tool_calls(r.tools_json),
                 rationale=r.rationale or r.decision or "",
                 created_at=r.created_at,
-                human_approved=r.actor is not None,
+                # No per-decision approval is recorded, so never claim one.
+                human_approved=False,
             )
         )
     return AuditResponse(circle_id=CircleId(circle_id), decisions=decisions)

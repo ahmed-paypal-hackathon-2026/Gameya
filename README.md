@@ -111,8 +111,13 @@ anything that changes who gets paid."
 Closing a cycle checks, before any HTTP call: the pot is complete (settled contributions
 equal amount × members); the cycle has no payout yet; the recipient is the approved slot
 owner and has never been paid in this circle; the recipient has an email. The payout row
-is written first, with a deterministic `sender_batch_id` (`gameya-{circle}-{cycle}`)
-that is also the `PayPal-Request-Id`, so a retry cannot pay twice.
+is written first, with a deterministic `sender_batch_id` (`gameya-{circle}-{cycle}-{stamp}`,
+where the stamp changes when the demo is reset) that is also the `PayPal-Request-Id`, so a
+retry cannot pay twice and a reset never replays an earlier run.
+
+Smart Chase reminders and invoices are sent when the organiser presses **Chase**; there is
+no separate approval for each message. The payout order, which decides who gets paid,
+applies only after every member approves it, and it is fixed once collection starts.
 
 ## Architecture
 
@@ -225,7 +230,8 @@ Interactive docs at `/docs` on the API. Main routes (all under `/api/v1`):
 | --- | --- |
 | `POST /auth/demo-login` | anyone (demo personas) |
 | `POST /agent/circle/chat`, `POST /circles` | logged in |
-| `GET /circles/{id}`, `GET /circles/{id}/my-invoices` | member |
+| `GET /circles/{id}` | anyone (names, slots and cycle dates; no money or risk data) |
+| `GET /circles/{id}/my-invoices` | member (own invoices only) |
 | `POST /circles/{id}/needs`, `GET /circles/{id}/needs` | member (own need only) |
 | `POST /circles/{id}/order/propose`, `POST /circles/{id}/order/approve` | member |
 | `POST /circles/{id}/stress-test`, `GET /circles/{id}/reliability` | organiser |
@@ -270,8 +276,12 @@ Honest scope for the hackathon:
 `render.yaml` is a Blueprint for the free tier: the API (Docker), the static web app, and
 Postgres. In the Render dashboard: **New → Blueprint**, pick this repo, then set
 `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_API_BASE_URL` and (optionally)
-`GEMINI_API_KEY`. Free Postgres expires after 30 days; the API reseeds the golden circle
-on a fresh database.
+`GEMINI_API_KEY`. After the first deploy, check that the service URLs Render assigned
+match `CORS_ORIGINS` (API) and `VITE_API_BASE_URL` (web) in `render.yaml`; if Render added
+a suffix, update both and redeploy the web app (its `VITE_*` values are fixed at build
+time). Free Postgres expires after 30 days: recreate the database from the Blueprint, and
+the API seeds the golden circle on the fresh database at startup. Columns added in later
+versions are added to an existing database automatically at startup.
 
 ## License
 

@@ -15,7 +15,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException
 
-from ...ai.paypal_rest import RestToolExecutor
+from ...ai.paypal_rest import PayPalToolError, RestToolExecutor
 from ...ai.toolkit_adapter import CreateInvoiceParameters, SendInvoiceParameters, request_id
 from .auth import SANDBOX_BASE_URL, get_paypal_auth
 
@@ -62,7 +62,9 @@ class PayPalInvoicing:
         created: dict[str, Any] = await self._rest.call(
             "create_invoice", params, request_id=request_id(key, "create_invoice")
         )
-        invoice_id = str(created["id"])
+        invoice_id = created.get("id")
+        if not isinstance(invoice_id, str) or not invoice_id:
+            raise PayPalToolError("create_invoice", 0, None)
         await self._rest.call(
             "send_invoice",
             SendInvoiceParameters(invoice_id=invoice_id),

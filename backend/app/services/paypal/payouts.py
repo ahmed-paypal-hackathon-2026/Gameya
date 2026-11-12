@@ -22,6 +22,7 @@ from .auth import SANDBOX_BASE_URL
 PAYOUTS_PATH = "/v1/payments/payouts"
 REQUEST_TIMEOUT_S = 20.0
 ALREADY_SENT = "ALREADY_SENT"
+ALREADY_USED = "SENDER_BATCH_ID_ALREADY_USED"
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,16 @@ class PayoutError(RuntimeError):
         super().__init__(f"PayPal payout failed: status={status} debug_id={debug_id}")
         self.status = status
         self.debug_id = debug_id
+
+
+def _already_used(data: dict[str, object]) -> bool:
+    """PayPal reports a reused sender_batch_id by name or in details[].issue."""
+    if data.get("name") == ALREADY_USED:
+        return True
+    details = data.get("details")
+    return isinstance(details, list) and any(
+        isinstance(d, dict) and d.get("issue") == ALREADY_USED for d in details
+    )
 
 
 def _base_url() -> str:
@@ -106,7 +117,7 @@ async def send_payout(
                 status=status if isinstance(status, str) else "PENDING",
             )
         raise PayoutError(response.status_code, response.headers.get("PayPal-Debug-Id"))
-    if data.get("name") == "SENDER_BATCH_ID_ALREADY_USED":
+    if _already_used(data):
         return PayoutResult(batch_id=None, status=ALREADY_SENT)
     debug_id = response.headers.get("PayPal-Debug-Id") or (
         data.get("debug_id") if isinstance(data.get("debug_id"), str) else None

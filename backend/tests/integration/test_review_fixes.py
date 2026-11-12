@@ -329,3 +329,70 @@ def test_marked_as_paid_is_not_money_received(client: TestClient, gateway: FakeI
         gateway.status[invoice_id] = "MARKED_AS_PAID"
     body = client.post(f"/api/v1/cycles/{CYCLE0}/sync", headers=_bearer(client)).json()
     assert body["newly_paid"] == 0
+
+
+# ---------- PR review: Important #1 — a draft that failed to send stays resendable ----------
+def test_sync_leaves_an_unsent_invoice_for_chase_to_resend(
+    client: TestClient, gateway: FakeInvoicing
+) -> None:
+    _order_applied()
+    failing = FakeExecutor(raises={"send_invoice": PayPalToolError("send_invoice", 500, "d")})
+    client.app.dependency_overrides[get_tool_executor] = lambda: failing  # type: ignore[attr-defined]
+    client.post(f"/api/v1/cycles/{CYCLE0}/chase", headers=_bearer(client))
+    for invoice in _rows(Invoice, cycle_id=CYCLE0):
+        gateway.status[invoice.paypal_invoice_id] = "DRAFT"
+    client.post(f"/api/v1/cycles/{CYCLE0}/sync", headers=_bearer(client))
+    assert {i.status for i in _rows(Invoice, cycle_id=CYCLE0)} == {"UNSENT"}
+    again = FakeExecutor()
+    client.app.dependency_overrides[get_tool_executor] = lambda: again  # type: ignore[attr-defined]
+    client.post(f"/api/v1/cycles/{CYCLE0}/chase", headers=_bearer(client))
+    tools = [c[0] for c in again.calls]
+    assert "create_invoice" not in tools and "send_invoice_reminder" not in tools
+    assert tools.count("send_invoice") == 6
+
+
+# ---------- PR review: Important #2 — collect only the order members are shown ----------
+def test_collect_is_refused_when_the_shown_order_differs_from_the_applied_one(
+    client: TestClient, gateway: FakeInvoicing
+) -> None:
+    client.post(f"{CIRCLE}/order/propose", json={}, headers=_bearer(client))
+    for name in ORDER:
+        client.post(
+            f"{CIRCLE}/order/approve",
+            json={"member_id": f"mem-{name}"},
+            headers=_bearer(client, name),
+        )
+    applied = {c.cycle_index: c.payout_member_id for c in _rows(Cycle, circle_id=GOLDEN_CIRCLE_ID)}
+    assert all(applied.values())
+    # A need changes the proposal after everyone approved; the cycles still hold the old order.
+    client.post(
+        f"{CIRCLE}/needs",
+        json={
+            "member_id": "mem-lina",
+            "raw_text": "My mother needs surgery in November, it's urgent",
+            "locale": "en",
+        },
+        headers=_bearer(client, "lina"),
+    )
+    shown = client.post(f"{CIRCLE}/order/propose", json={}, headers=_bearer(client)).json()
+    assert {a["slot_index"]: a["member_id"] for a in shown["assignments"]} != applied
+    resp = client.post(f"/api/v1/cycles/{CYCLE0}/collect", headers=_bearer(client))
+    assert resp.status_code == 409
+    assert "approve" in resp.json()["detail"]
+    assert gateway.created == []
+
+
+# ---------- PR review: Important #3 — an existing database gets the new columns ----------
+def test_startup_adds_missing_columns_to_an_existing_database(tmp_path: Path) -> None:
+    from app.db import ensure_columns
+    from sqlalchemy import create_engine, inspect, text
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE payouts (id VARCHAR(64) PRIMARY KEY)"))
+        conn.execute(text("CREATE TABLE invoices (id VARCHAR(64) PRIMARY KEY)"))
+    ensure_columns(engine)
+    ensure_columns(engine)  # idempotent
+    cols = {t: {c["name"] for c in inspect(engine).get_columns(t)} for t in ("payouts", "invoices")}
+    assert "recipient_member_id" in cols["payouts"]
+    assert "reminders_sent" in cols["invoices"]

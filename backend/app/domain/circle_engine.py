@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from ..config import get_settings
 from ..db.models import Circle, Contribution, Cycle, Membership, Payout
 from ..services.paypal.payouts import PayoutError, PayoutResult, send_payout
-from .collection import circle_stamp
+from .collection import PAYOUT_ACCEPTED, circle_stamp
 
 CENT = Decimal("0.01")
 SETTLED = ("PAID", "COVERED")
@@ -37,7 +37,7 @@ CREATED = "CREATED"  # row written, PayPal not answered yet
 FAILED = "FAILED"  # PayPal refused or did not answer; safe to retry with the same id
 BLOCKED = "BLOCKED"  # Payouts not enabled on the sandbox app (contingency C1)
 # PayPal accepted the batch: never send it again.
-ACCEPTED = frozenset({"PENDING", "PROCESSING", "SUCCESS", "ALREADY_SENT"})
+ACCEPTED = PAYOUT_ACCEPTED
 
 
 class InvariantViolation(ValueError):  # noqa: N818 - name fixed by the plan interface

@@ -27,7 +27,7 @@ services:
       # Vite bakes VITE_* in at build time, so they are build args, not runtime env.
       args:
         VITE_API_BASE_URL: http://localhost:8000
-        VITE_USE_MOCKS: ${DEMO_MODE:-0}
+        VITE_USE_MOCKS: ${VITE_USE_MOCKS:-0}
     ports:
       # 5173 is in the API's default dev CORS origins.
       - "5173:8080"

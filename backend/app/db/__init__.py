@@ -49,9 +49,33 @@ def init_db() -> None:
     if _engine is None:
         raise RuntimeError("setup_engine() must be called before init_db()")
     Base.metadata.create_all(_engine)
+    ensure_columns(_engine)
     from ..leash.models import LeashBase
 
     LeashBase.metadata.create_all(_engine)
+
+
+# Columns added after the first deploy. create_all() never alters an existing table, so an
+# existing database (e.g. a Render Postgres from an earlier deploy) gets them here.
+ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("payouts", "recipient_member_id", "VARCHAR(64)"),
+    ("invoices", "reminders_sent", "INTEGER DEFAULT 0"),
+)
+
+
+def ensure_columns(engine: Engine) -> None:
+    """Add any missing ADDED_COLUMNS to existing tables (idempotent, additive only)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table, column, ddl in ADDED_COLUMNS:
+            if table not in tables:
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            if column not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
 def get_db() -> Iterator[Session]:

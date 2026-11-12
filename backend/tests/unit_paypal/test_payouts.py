@@ -93,3 +93,24 @@ async def test_amount_must_be_positive() -> None:
             amount=Decimal("0"),
             token_provider=_token,
         )
+
+
+@respx.mock
+async def test_duplicate_batch_reported_in_details_is_not_an_error() -> None:
+    respx.post(PAYOUTS_URL).mock(
+        return_value=httpx.Response(
+            400,
+            json={
+                "name": "USER_BUSINESS_ERROR",
+                "debug_id": "dbg-3",
+                "details": [{"issue": "SENDER_BATCH_ID_ALREADY_USED"}],
+            },
+        )
+    )
+    result = await send_payout(
+        sender_batch_id=BATCH,
+        receiver_email="amina-buyer@gameya-sandbox.dev",
+        amount=Decimal("600.00"),
+        token_provider=_token,
+    )
+    assert result.status == "ALREADY_SENT"
