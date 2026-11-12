@@ -45,8 +45,14 @@ export function CycleActions({
 
   return (
     <section className="card" aria-labelledby="cycle-title">
-      <h2 id="cycle-title">Run the cycle</h2>
-      <div className="viewer-bar">
+      <div className="card__head">
+        <h2 id="cycle-title">Run the cycle</h2>
+        <p className="muted">
+          Collect sends the PayPal invoices, Sync reads who paid, Chase follows up late members, and
+          Close checks the ledger and pays the pot once.
+        </p>
+      </div>
+      <div className="cycle-pick">
         <label htmlFor="cycle">Cycle</label>
         <select id="cycle" value={index} onChange={(e) => setIndex(Number(e.target.value))}>
           {circle.cycles.map((c) => (
@@ -56,7 +62,7 @@ export function CycleActions({
             </option>
           ))}
         </select>
-        {cycle ? <span className="tag">{cycle.status.replace("_", " ")}</span> : null}
+        {cycle ? <span className={`tag tag--${cycle.status}`}>{cycle.status.replace("_", " ")}</span> : null}
       </div>
       <div className="actions">
         {BUTTONS.map((b) => (

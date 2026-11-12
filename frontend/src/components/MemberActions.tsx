@@ -12,16 +12,22 @@ export function MyInvoicesCard({ viewer }: { viewer: Viewer }) {
   const state = useAsync(() => getMyInvoices(viewer.circle_id), [viewer.viewer_id, viewer.circle_id]);
   return (
     <section className="card" aria-labelledby="pay-title">
-      <h2 id="pay-title">Your contributions</h2>
+      <div className="card__head">
+        <h2 id="pay-title">Your contributions</h2>
+      </div>
       <AsyncBlock state={state} loadingText="Loading your invoices...">
         {(invoices) =>
           invoices.length === 0 ? (
-            <p className="muted">No invoice yet. The organiser sends them when a cycle opens.</p>
+            <p className="empty-note">No invoice yet. The organiser sends them when a cycle opens.</p>
           ) : (
             <ul className="invoice-list">
               {invoices.map((inv) => (
-                <li key={inv.paypal_invoice_id}>
-                  Cycle {inv.cycle_index + 1}: {formatUsd(inv.amount)}{" "}
+                <li key={inv.paypal_invoice_id} className={inv.paid ? "invoice invoice--paid" : "invoice"}>
+                  <div className="invoice__main">
+                    <span className="invoice__cycle">Cycle {inv.cycle_index + 1}</span>
+                    <span className="invoice__amount num">{formatUsd(inv.amount)}</span>
+                    <span className="invoice__id mono">{inv.paypal_invoice_id}</span>
+                  </div>
                   {inv.paid ? (
                     <span className="tag tag--ok">Paid</span>
                   ) : (
@@ -34,7 +40,6 @@ export function MyInvoicesCard({ viewer }: { viewer: Viewer }) {
                       Pay with PayPal
                     </a>
                   )}
-                  <span className="muted mono"> {inv.paypal_invoice_id}</span>
                 </li>
               ))}
             </ul>
@@ -75,10 +80,12 @@ export function NeedForm({ viewer }: { viewer: Viewer }) {
 
   return (
     <section className="card" aria-labelledby="need-title">
-      <h2 id="need-title">What do you need the pot for?</h2>
-      <p className="muted">
-        Write it your way, in English or Arabic. The fair order uses it to choose your slot.
-      </p>
+      <div className="card__head">
+        <h2 id="need-title">What do you need the pot for?</h2>
+        <p className="muted">
+          Write it your way, in English or Arabic. The fair order uses it to choose your slot.
+        </p>
+      </div>
       <form className="need-form" onSubmit={submit}>
         <label className="visually-hidden" htmlFor="need-text">
           Your need

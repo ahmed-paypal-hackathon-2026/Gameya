@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CIRCLE_ID, DATA_MODE, getRoster, loginAs, type RosterMember } from "./api/client";
 import { AsyncBlock } from "./components/AsyncBlock";
+import { initialOf } from "./components/CircleHero";
 import { useAsync } from "./hooks/useAsync";
 import { MemberHome } from "./pages/member/MemberHome";
 import { OrganiserDashboard } from "./pages/organiser/OrganiserDashboard";
@@ -39,22 +40,33 @@ function Shell({ roster }: { roster: RosterMember[] }) {
 
   return (
     <>
-      <div className="viewer-bar">
-        <label htmlFor="viewer">Viewing as</label>
-        <select id="viewer" value={me.member_id} onChange={(e) => setViewerId(e.target.value)}>
-          {roster.map((m) => (
-            <option key={m.member_id} value={m.member_id}>
-              {m.display_name} ({m.role})
-            </option>
-          ))}
-        </select>
+      <div className="persona">
+        <span className="avatar avatar--lg" aria-hidden="true">
+          {initialOf(me.display_name)}
+        </span>
+        <div className="persona__text">
+          <span className="persona__hello" dir="auto">
+            Hi, <bdi>{me.display_name}</bdi>
+          </span>
+          <span className="persona__role">{me.role === "organiser" ? "Circle organiser" : "Circle member"}</span>
+        </div>
+        <div className="persona__switch">
+          <label htmlFor="viewer">Viewing as</label>
+          <select id="viewer" value={me.member_id} onChange={(e) => setViewerId(e.target.value)}>
+            {roster.map((m) => (
+              <option key={m.member_id} value={m.member_id}>
+                {m.display_name} ({m.role})
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       {loginError ? (
         <p className="error" role="alert">
           Could not log in: {loginError}
         </p>
       ) : loggedIn !== me.member_id ? (
-        <p className="muted" role="status">
+        <p className="muted loading-line" role="status">
           Logging in as {me.display_name}...
         </p>
       ) : viewer.role === "organiser" ? (
@@ -70,14 +82,37 @@ function Shell({ roster }: { roster: RosterMember[] }) {
 export default function App() {
   const roster = useAsync(() => getRoster(CIRCLE_ID), []);
   return (
-    <main className="app">
-      <header className="app__header">
-        <h1>Gam'eya</h1>
-        <span className="tag">{DATA_MODE === "mock" ? "Mock data" : "Live API · PayPal sandbox"}</span>
+    <>
+      <header className="topbar">
+        <div className="topbar__inner">
+          <span className="brand">
+            <svg className="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+              <circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.35" />
+              {[0, 1, 2, 3, 4, 5].map((i) => {
+                const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+                return (
+                  <circle
+                    key={i}
+                    cx={16 + 11 * Math.cos(a)}
+                    cy={16 + 11 * Math.sin(a)}
+                    r={i === 0 ? 4 : 3}
+                    className={i === 0 ? "brand__dot brand__dot--turn" : "brand__dot"}
+                  />
+                );
+              })}
+            </svg>
+            <h1 className="brand__name">Gam'eya</h1>
+          </span>
+          <span className={DATA_MODE === "mock" ? "mode mode--mock" : "mode mode--live"}>
+            {DATA_MODE === "mock" ? "Demo data" : "Live · PayPal sandbox"}
+          </span>
+        </div>
       </header>
-      <AsyncBlock state={roster} loadingText="Loading the circle...">
-        {(members) => <Shell roster={members} />}
-      </AsyncBlock>
-    </main>
+      <main className="app">
+        <AsyncBlock state={roster} loadingText="Loading the circle...">
+          {(members) => <Shell roster={members} />}
+        </AsyncBlock>
+      </main>
+    </>
   );
 }
