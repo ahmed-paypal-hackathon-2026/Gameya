@@ -10,8 +10,8 @@ A group saves together and one member takes the whole pot each cycle.<br>
 PayPal moves the money, AI helps run the circle, and humans approve anything that changes who gets paid.
 
 [![Live demo](https://img.shields.io/badge/demo-live-d6f25c?style=for-the-badge&labelColor=141414)](https://gameya-web.onrender.com/)
-[![PayPal Sandbox](https://img.shields.io/badge/PayPal-sandbox-d6f25c?style=for-the-badge&labelColor=141414)](#-paypal-integration)
-[![Tests](https://img.shields.io/badge/tests-900%20passing-d6f25c?style=for-the-badge&labelColor=141414)](#-quality)
+[![PayPal Sandbox](https://img.shields.io/badge/PayPal-sandbox-d6f25c?style=for-the-badge&labelColor=141414)](#paypal-integration)
+[![Tests](https://img.shields.io/badge/tests-900%20passing-d6f25c?style=for-the-badge&labelColor=141414)](#quality)
 [![License: MIT](https://img.shields.io/badge/license-MIT-d6f25c?style=for-the-badge&labelColor=141414)](LICENSE)
 
 ![Python](https://img.shields.io/badge/Python-3.11-141414?logo=python&logoColor=d6f25c)
@@ -23,7 +23,7 @@ PayPal moves the money, AI helps run the circle, and humans approve anything tha
 ![AG Grid](https://img.shields.io/badge/AG%20Grid-141414)
 ![Render](https://img.shields.io/badge/Render-141414?logo=render&logoColor=d6f25c)
 
-**[Live app](https://gameya-web.onrender.com/)** · **[For judges](#-try-it-in-2-minutes)** · **[How it works](#-how-a-cycle-works)** · **[Architecture](#-architecture)** · **[Run locally](#-run-it-locally)**
+**[Live app](https://gameya-web.onrender.com/)** · **[For judges](#try-it-in-2-minutes)** · **[How it works](#how-a-cycle-works)** · **[Architecture](#architecture)** · **[Run locally](#run-it-locally)**
 
 <sub>Built for the <b>PayPal AI Hackathon 2026</b>. Everything runs on the PayPal Sandbox: no real money moves.</sub>
 
@@ -39,42 +39,42 @@ But it runs on WhatsApp and memory:
 
 | | Today | With Gam'eya |
 |---|---|---|
-| 📒 **Records** | Nobody keeps a ledger | Every payment carries its real PayPal id |
-| ⚖️ **Payout order** | Argued over: "who needs it first?" | An optimiser decides from members' needs, and everyone approves |
-| ⏰ **Late payers** | Awkward follow-ups, or none | Smart Chase sends a polite reminder in the member's language |
-| 💸 **Payouts** | Cash, with no check the pot is complete | One PayPal payout, only after the ledger balances |
-| 🎯 **Risk** | Guesswork | A reliability model and a 10,000-run stress test recommend a reserve |
+| **Records** | Nobody keeps a ledger | Every payment carries its real PayPal id |
+| **Payout order** | Argued over: "who needs it first?" | An optimiser decides from members' needs, and everyone approves |
+| **Late payers** | Awkward follow-ups, or none | Smart Chase sends a polite reminder in the member's language |
+| **Payouts** | Cash, with no check the pot is complete | One PayPal payout, only after the ledger balances |
+| **Risk** | Guesswork | A reliability model and a 10,000-run stress test recommend a reserve |
 
 > [!IMPORTANT]
 > **Our golden rule:** *AI understands and advises. Deterministic code moves the money. Humans approve anything that changes who gets paid.*
 
 ---
 
-## ✨ Features
+## Features
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
-### 💬 Set up by chat
+### Set up by chat
 Describe the circle in plain words ("6 friends, $100 a month, starting 1 December"). The **Circle Agent** fills in a card; when you confirm, it creates a real PayPal **product and billing plan**.
 
-### ⚖️ A fair payout order
+### A fair payout order
 Members say what they need the pot for, in **English or Egyptian Arabic**. The **Hungarian algorithm** gives each member the slot that best fits their need, and every member approves before it applies.
 
-### 🧾 Real PayPal invoices
+### Real PayPal invoices
 **Collect** sends every member a PayPal invoice, which they pay on **PayPal's own page**. **Sync** reads the status back; only money PayPal actually received counts.
 
 </td>
 <td width="50%" valign="top">
 
-### 🔔 Smart Chase
+### Smart Chase
 Late after the grace period? Smart Chase sends a reminder in the member's language, using only allow-listed PayPal tools and never asking for more than the contribution.
 
-### 🛡️ One safe payout
+### One safe payout
 **Close** checks four ledger invariants, then pays the pot with **PayPal Payouts**, exactly once, even if you press it twice.
 
-### 📊 Explainable risk, organiser-only
+### Explainable risk, organiser-only
 Each member's chance of paying late with its **top three reasons**, and a **Monte Carlo stress test** that recommends a safety reserve. Members never see anyone's score.
 
 </td>
@@ -83,7 +83,7 @@ Each member's chance of paying late with its **top three reasons**, and a **Mont
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 <table>
 <tr>
@@ -109,7 +109,7 @@ Each member's chance of paying late with its **top three reasons**, and a **Mont
 
 ---
 
-## 🚀 Try it in 2 minutes
+## Try it in 2 minutes
 
 > [!TIP]
 > Open **[gameya-web.onrender.com](https://gameya-web.onrender.com/)**. It runs on Render's free tier, so the **first load can take about 30 seconds** while the API wakes up.
@@ -125,7 +125,7 @@ Each member's chance of paying late with its **top three reasons**, and a **Mont
    **Collect** → members **Pay with PayPal** → **Sync payments** → **Chase** → **Close cycle**
 
 <details>
-<summary><b>🧪 Sandbox buyer accounts</b> (to pay invoices on PayPal's page)</summary>
+<summary><b>Sandbox buyer accounts</b> (to pay invoices on PayPal's page)</summary>
 
 | Member | Sandbox email |
 |---|---|
@@ -142,7 +142,7 @@ The passwords are in the Devpost submission, not in this repository. Setup detai
 
 ---
 
-## 🔄 How a cycle works
+## How a cycle works
 
 ```mermaid
 sequenceDiagram
@@ -175,22 +175,22 @@ sequenceDiagram
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-    web["🖥️ Web app<br/>React 18 · Vite · AG Grid"]
-    subgraph api["⚙️ FastAPI backend (Docker)"]
+    web["Web app<br/>React 18 · Vite · AG Grid"]
+    subgraph api["FastAPI backend (Docker)"]
         direction TB
         routes["API · auth · access rules"]
-        agents["🤖 AI agents<br/>Gemini + guardrails"]
-        engine["🛡️ Engine<br/>collection · invariants · payouts"]
-        ml["📈 ML<br/>reliability · stress test · fair order"]
+        agents["AI agents<br/>Gemini + guardrails"]
+        engine["Engine<br/>collection · invariants · payouts"]
+        ml["ML<br/>reliability · stress test · fair order"]
         pp["PayPal client<br/>cached OAuth · request ids"]
     end
-    db[("🗄️ PostgreSQL<br/>ledger · audit")]
+    db[("PostgreSQL<br/>ledger · audit")]
     gemini["Google Gemini"]
-    paypal["💳 PayPal Sandbox<br/>Catalog · Plans · Invoicing · Payouts"]
+    paypal["PayPal Sandbox<br/>Catalog · Plans · Invoicing · Payouts"]
 
     web -- HTTPS + Bearer token --> routes
     routes --> agents
@@ -217,7 +217,7 @@ flowchart LR
 
 ---
 
-## 💳 PayPal integration
+## PayPal integration
 
 | API | What we use it for | Triggered by |
 |---|---|---|
@@ -227,13 +227,13 @@ flowchart LR
 | **Invoicing v2** | Create, send and read each member's invoice; reminders; QR codes | Collect · Sync · Chase |
 | **Payouts v1** | The cycle's pot to its recipient, one batch per cycle | Close cycle |
 
-- 🔁 **Idempotent:** every POST carries a deterministic `PayPal-Request-Id`, so a retry can never create a second invoice or payout.
-- 📝 **Invoicing detail:** reminder text goes into the invoice note at creation, because `/send` ignores later text.
-- 🧪 **Sandbox only:** the app refuses to start against any non-sandbox PayPal URL.
+- **Idempotent:** every POST carries a deterministic `PayPal-Request-Id`, so a retry can never create a second invoice or payout.
+- **Invoicing detail:** reminder text goes into the invoice note at creation, because `/send` ignores later text.
+- **Sandbox only:** the app refuses to start against any non-sandbox PayPal URL.
 
 ---
 
-## 🤖 AI and machine learning
+## AI and machine learning
 
 | Component | What it does | Model · fallback |
 |---|---|---|
@@ -250,14 +250,14 @@ flowchart LR
 
 ---
 
-## 🛡️ Money safety
+## Money safety
 
 Before **any** HTTP call, closing a cycle checks four invariants:
 
-1. ✅ **The pot is complete:** settled contributions equal amount × members.
-2. ✅ **One payout per cycle:** a payout PayPal accepted is returned, never sent again.
-3. ✅ **Never paid twice:** each payout stores its recipient, so a later order change cannot hide it.
-4. ✅ **Deliverable:** the recipient has an email address.
+1. **The pot is complete:** settled contributions equal amount × members.
+2. **One payout per cycle:** a payout PayPal accepted is returned, never sent again.
+3. **Never paid twice:** each payout stores its recipient, so a later order change cannot hide it.
+4. **Deliverable:** the recipient has an email address.
 
 <details>
 <summary><b>Failure modes we tested for</b></summary>
@@ -278,7 +278,7 @@ Money is always `Decimal`, rounded to the cent (ROUND_HALF_UP) and sent as strin
 
 ---
 
-## 🔐 Security and privacy
+## Security and privacy
 
 - **Identity:** HMAC-signed demo-login tokens; organiser rights come from server-side data, never from the browser.
 - **Server-side access rules:** reliability, ledger, audit and the stress test are organiser-only; members act only for themselves.
@@ -288,15 +288,15 @@ Money is always `Decimal`, rounded to the cent (ROUND_HALF_UP) and sent as strin
 
 ---
 
-## 🧪 Quality
+## Quality
 
 | | |
 |---|---|
-| 🐍 **Backend** | **864 tests**: unit, integration and property-based (Hypothesis); PayPal mocked at the HTTP layer (respx) |
-| ⚛️ **Frontend** | **36 tests** (Vitest + Testing Library), including "member view never requests risk data" and keyboard-accessible dropdowns |
-| 🔍 **Static checks** | ruff · strict mypy · `tsc --noEmit` |
-| 🔁 **CI** | gitleaks (full history) → ruff → mypy → pytest → tsc on every pull request |
-| 👀 **Reviews** | Two independent whole-branch reviews; every Critical and Important finding fixed with a test that failed first |
+| **Backend** | **864 tests**: unit, integration and property-based (Hypothesis); PayPal mocked at the HTTP layer (respx) |
+| **Frontend** | **36 tests** (Vitest + Testing Library), including "member view never requests risk data" and keyboard-accessible dropdowns |
+| **Static checks** | ruff · strict mypy · `tsc --noEmit` |
+| **CI** | gitleaks (full history) → ruff → mypy → pytest → tsc on every pull request |
+| **Reviews** | Two independent whole-branch reviews; every Critical and Important finding fixed with a test that failed first |
 
 ```bash
 cd backend  && pytest && ruff check app tests && mypy
@@ -305,7 +305,7 @@ cd frontend && npx tsc --noEmit && npx vitest run
 
 ---
 
-## 💻 Run it locally
+## Run it locally
 
 <details open>
 <summary><b>Quick start</b></summary>
@@ -396,7 +396,7 @@ docs/               sandbox setup, demo script, ML assumptions, production notes
 
 ---
 
-## ☁️ Deployment
+## Deployment
 
 [`render.yaml`](render.yaml) is a **Render Blueprint** on the free tier: the API (Docker), the static web app and PostgreSQL.
 
@@ -409,7 +409,7 @@ docs/               sandbox setup, demo script, ML assumptions, production notes
 
 ---
 
-## 🧭 Scope and roadmap
+## Scope and roadmap
 
 <table>
 <tr>
@@ -442,7 +442,7 @@ More detail: [docs/production-considerations.md](docs/production-considerations.
 
 <div align="center">
 
-**Built with ❤️ by the Gam'eya team for the PayPal AI Hackathon 2026**
+**Built by the Gam'eya team for the PayPal AI Hackathon 2026**
 
 [Live app](https://gameya-web.onrender.com/) · [Contributors](https://github.com/ahmed-paypal-hackathon-2026/Gameya/graphs/contributors) · [MIT License](LICENSE)
 
