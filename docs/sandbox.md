@@ -17,14 +17,22 @@ The golden story (see `shared/fixtures/json/`) uses six funded sandbox personal
 accounts. Create them in **Sandbox accounts → Create account** and add ≥ $700
 balance each (6 × $100 + headroom for catch-up fees):
 
-| Persona id    | Name   | Role      | Story note |
-| ------------- | ------ | --------- | ---------- |
-| `mem-amina`   | Amina  | Organiser | Takes the last slot 6 on purpose |
-| `mem-omar`    | Omar   | Member    | High-risk; school fees December; late in cycle 3 |
-| `mem-sara`    | Sara   | Member    | Receives the cycle-1 pot on 1 Nov 2026 |
-| `mem-youssef` | Youssef| Member    | Asks the Copilot in Arabic; swaps with Karim |
-| `mem-lina`    | Lina   | Member    | Wedding in March; receives pot early (slot 3) |
-| `mem-karim`   | Karim  | Member    | Flexible; approves swap |
+Create each account with **exactly** the email below: the app invoices and pays these
+addresses (`backend/app/db/seed.py`, `buyer_email`).
+
+| Persona id    | Name    | Role      | Sandbox account email              |
+| ------------- | ------- | --------- | ---------------------------------- |
+| `mem-amina`   | Amina   | Organiser | `amina-buyer@gameya-sandbox.dev`   |
+| `mem-omar`    | Omar    | Member    | `omar-buyer@gameya-sandbox.dev`    |
+| `mem-sara`    | Sara    | Member    | `sara-buyer@gameya-sandbox.dev`    |
+| `mem-youssef` | Youssef | Member    | `youssef-buyer@gameya-sandbox.dev` |
+| `mem-lina`    | Lina    | Member    | `lina-buyer@gameya-sandbox.dev`    |
+| `mem-karim`   | Karim   | Member    | `karim-buyer@gameya-sandbox.dev`   |
+
+The payout order is not fixed in advance: the fair-order optimiser decides it from the
+needs the members submit, and every member approves it. With the demo needs, Amina
+(urgent surgery in January) gets slot 1, Sara (school fees in December) slot 2, and Omar
+(high risk) is kept out of the early slots.
 
 ## 3. Register the webhook
 
