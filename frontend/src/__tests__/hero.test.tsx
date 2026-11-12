@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { type CircleOverview, getCircleOverview } from "../api/client";
-import { CircleHero, initialOf, scheduleOf } from "../components/CircleHero";
+import { CircleHero, initialOf, scheduleOf, splitCents } from "../components/CircleHero";
 
 describe("circle overview (member-safe)", () => {
   it("strips every risk field before it reaches a component", async () => {
@@ -58,10 +58,19 @@ describe("CircleHero for a member", () => {
     const { container } = render(<CircleHero circleId="circle-golden-01" viewerId="mem-omar" />);
     await screen.findByText("Golden Circle");
     expect(screen.getByText("You received the pot")).toBeTruthy();
-    expect(screen.getByText("$600.00")).toBeTruthy();
+    expect(container.querySelector(".hero__pot-value")?.textContent).toBe("$600.00");
+    expect(container.querySelector(".hero__cents")?.textContent).toBe(".00");
     expect(container.querySelectorAll(".timeline__item")).toHaveLength(6);
     expect(container.querySelectorAll(".ring__dot")).toHaveLength(6);
     expect(container.textContent).not.toMatch(/\d+%/);
     expect(container.querySelector("script, img")).toBeNull();
+  });
+});
+
+describe("splitCents", () => {
+  it("splits at the decimal point only", () => {
+    expect(splitCents("$1,234.50")).toEqual(["$1,234", ".50"]);
+    expect(splitCents("$600")).toEqual(["$600", ""]);
+    expect(splitCents("n/a")).toEqual(["n/a", ""]);
   });
 });

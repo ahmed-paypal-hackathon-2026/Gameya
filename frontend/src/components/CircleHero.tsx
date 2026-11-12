@@ -70,6 +70,12 @@ export function scheduleOf(o: CircleOverview): Cycle[] {
   return out;
 }
 
+/** "$1,234.50" -> ["$1,234", ".50"], so the cents can be shown quieter. Plain text only. */
+export function splitCents(text: string): [string, string] {
+  const i = text.lastIndexOf(".");
+  return i > 0 ? [text.slice(0, i), text.slice(i)] : [text, ""];
+}
+
 function potOf(o: CircleOverview): string {
   const n = Number(o.contribution_amount) * o.member_count;
   return Number.isFinite(n) ? n.toFixed(2) : "";
@@ -183,7 +189,10 @@ export function CircleHero({ circleId, viewerId }: { circleId: string; viewerId:
           </p>
           <div className="hero__pot">
             <span className="hero__pot-label">Pot each {every}</span>
-            <span className="hero__pot-value num">{pot ? formatUsd(pot) : ""}</span>
+            <span className="hero__pot-value num">
+              {pot ? splitCents(formatUsd(pot))[0] : ""}
+              <span className="hero__cents">{pot ? splitCents(formatUsd(pot))[1] : ""}</span>
+            </span>
           </div>
           <div className="hero__facts">
             <div className="hero__fact">
