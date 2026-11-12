@@ -15,7 +15,8 @@ LLM_TIMEOUT_S = 8.0
 
 
 class LLMClient(Protocol):
-    model_name: str
+    @property
+    def model_name(self) -> str: ...
 
     async def generate_json(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         """Return an object matching `schema`; raise on any failure."""

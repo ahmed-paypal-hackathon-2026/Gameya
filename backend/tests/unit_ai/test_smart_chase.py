@@ -57,7 +57,7 @@ def member(**over: Any) -> MemberDue:
 
 def cycle(**over: Any) -> CycleDue:
     data: dict[str, Any] = {
-        "cycle_index": 3,
+        "cycle_index": 2,
         "circle_id": CircleId("cir_test"),
         "circle_name": "Family Circle",
         "member_count": 6,
@@ -130,7 +130,7 @@ async def test_invoice_after_due_plus_one() -> None:
     assert plan.contribution_id == "con_01JC4Q8ZK3"
     assert plan.recipient_email == "omar@example.com"
     assert plan.plan_id is not None and plan.plan_id.startswith("chp_")
-    assert plan.cycle_index == 3
+    assert plan.cycle_index == 2
 
 
 async def test_invoice_number_uses_attempt_counter() -> None:
@@ -340,7 +340,7 @@ QR_OK = {"generate_invoice_qr_code": {"qr_code_base64": "iVBORw0KGgo="}}
 async def test_execute_invoice_sequence_and_note() -> None:
     plan = await invoice_plan()
     executor = FakeExecutor(results=QR_OK)
-    result = await execute_chase(plan, executor=executor)
+    result = await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert [c[0] for c in executor.calls] == [
         "create_invoice",
         "send_invoice",
@@ -365,7 +365,7 @@ async def test_execute_invoice_sequence_and_note() -> None:
 async def test_execute_request_ids_keyed_by_plan_id() -> None:
     plan = await invoice_plan()
     executor = FakeExecutor()
-    await execute_chase(plan, executor=executor)
+    await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert plan.plan_id is not None
     for tool, _params, rid in executor.calls:
         assert rid == request_id(plan.plan_id, tool)
@@ -375,7 +375,7 @@ async def test_execute_send_failure_then_retry_no_duplicate() -> None:
     plan = await invoice_plan()
     executor = FakeExecutor(raises={"send_invoice": PayPalToolError("send_invoice", 0, None)})
     with pytest.raises(ChaseStepFailed) as info:
-        await execute_chase(plan, executor=executor)
+        await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     failed = info.value
     assert failed.step == "send_invoice"
     assert failed.invoice_id == "FAKE-00000001"
@@ -385,7 +385,12 @@ async def test_execute_send_failure_then_retry_no_duplicate() -> None:
 
     executor.raises.clear()
     executor.calls.clear()
-    result = await execute_chase(plan, executor=executor, attempt_invoice_id=failed.invoice_id)
+    result = await execute_chase(
+        plan,
+        executor=executor,
+        contribution_amount=Decimal("100.00"),
+        attempt_invoice_id=failed.invoice_id,
+    )
     names = [c[0] for c in executor.calls]
     assert "create_invoice" not in names
     assert names == ["send_invoice", "generate_invoice_qr_code"]
@@ -397,7 +402,7 @@ async def test_execute_create_failure_has_no_invoice_id() -> None:
     plan = await invoice_plan()
     executor = FakeExecutor(raises={"create_invoice": RuntimeError("boom")})
     with pytest.raises(ChaseStepFailed) as info:
-        await execute_chase(plan, executor=executor)
+        await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert info.value.step == "create_invoice"
     assert info.value.invoice_id is None
     assert [c[0] for c in executor.calls] == ["create_invoice"]
@@ -408,7 +413,7 @@ async def test_qr_failure_is_soft() -> None:
     executor = FakeExecutor(
         raises={"generate_invoice_qr_code": PayPalToolError("generate_invoice_qr_code", 500, None)}
     )
-    result = await execute_chase(plan, executor=executor)
+    result = await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert result.qr_code_base64 is None
     assert result.qr_error == "PayPalToolError"
     assert result.invoice_id == "FAKE-00000001"
@@ -418,7 +423,7 @@ async def test_execute_reminder_uses_note() -> None:
     plan = await invoice_plan(open_invoice_id="INV2-ABCD", invoice_attempts=1)
     assert plan.action is ChaseAction.REMINDER
     executor = FakeExecutor()
-    result = await execute_chase(plan, executor=executor)
+    result = await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert [c[0] for c in executor.calls] == ["send_invoice_reminder"]
     params = executor.calls[0][1]
     assert isinstance(params, SendInvoiceReminderParameters)
@@ -432,7 +437,7 @@ async def test_execute_reminder_failure_raises_step() -> None:
     plan = await invoice_plan(open_invoice_id="INV2-ABCD", invoice_attempts=1)
     executor = FakeExecutor(raises={"send_invoice_reminder": RuntimeError("x")})
     with pytest.raises(ChaseStepFailed) as info:
-        await execute_chase(plan, executor=executor)
+        await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert info.value.step == "send_invoice_reminder"
     assert info.value.invoice_id == "INV2-ABCD"
 
@@ -447,7 +452,7 @@ async def test_execute_rejects_nudge_and_none() -> None:
     executor = FakeExecutor()
     for plan in (nudge, noop):
         with pytest.raises(ValueError):
-            await execute_chase(plan, executor=executor)
+            await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert executor.calls == []
 
 
@@ -455,5 +460,5 @@ async def test_execute_requires_plan_id() -> None:
     plan = (await invoice_plan()).model_copy(update={"plan_id": None})
     executor = FakeExecutor()
     with pytest.raises(ValueError):
-        await execute_chase(plan, executor=executor)
+        await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     assert executor.calls == []

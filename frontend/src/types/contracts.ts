@@ -343,6 +343,8 @@ export interface CircleAgentChatResponse {
 
 export interface CreateCircleRequest {
   spec: CircleSpec;
+  /** Safety reserve percent (0-10), decimal string; collected as the plan's setup fee. */
+  reserve_pct?: string;
 }
 
 export interface PayPalReferences {

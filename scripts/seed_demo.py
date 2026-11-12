@@ -69,21 +69,25 @@ def check_fixtures() -> list[str]:
     members = circle["members"]
     cycles = circle["cycles"]
     closed: list[dict[str, object]] = [
-        cyc for cyc in cycles if cyc["status"] == "paid_out"  # type: ignore[misc]
+        cyc
+        for cyc in cycles
+        if cyc["status"] == "paid_out"  # type: ignore[misc]
     ]
     contributions = sum(
-        Decimal(str(row["amount"])) for row in ledger["rows"]  # type: ignore[index,union-attr,arg-type]
+        Decimal(str(row["amount"]))
+        for row in ledger["rows"]  # type: ignore[index,union-attr,arg-type]
     )
     payouts = sum(
-        Decimal(str(p["amount"])) for p in ledger["payouts"]  # type: ignore[index,union-attr,arg-type,union-attr]
+        Decimal(str(p["amount"]))
+        for p in ledger["payouts"]  # type: ignore[index,union-attr,arg-type,union-attr]
     )
     spec = circle["spec"]
     return [
         f"circle:       {circle['circle_id']} ({spec['name']})",
-        f"members:      {len(members)} x {spec['contribution_amount']} USD / {spec['frequency']}",
-        f"starts:       {spec['start_date']}, reserve {float(circle['reserve_pct']):.0f}%",
+        f"members:      {len(members)} x {spec['contribution_amount']} USD / {spec['cycle_unit']}",
+        f"starts:       {spec['start_date']}, reserve {Decimal(str(circle['reserve_pct']))}%",
         f"closed cycles:{len(closed):3} (recipients: "
-        + ", ".join(str(c['recipient_id']) for c in closed)
+        + ", ".join(str(c["recipient_id"]) for c in closed)
         + ")",
         f"contributions:{contributions} | paid out: {payouts}",
         "status:       fixtures complete and internally consistent",
@@ -108,20 +112,21 @@ def seed_or_reset(reset: bool) -> int:
             file=sys.stderr,
         )
         return 1
+    sys.path.insert(0, str(REPO_ROOT / "backend"))
+    from app.config import get_settings
+    from app.db import get_db, init_db, setup_engine
+    from app.db.seed import seed_golden_circle
+
+    setup_engine(get_settings().database_url)
+    init_db()
+    session = next(get_db())
     try:
-        sys.path.insert(0, str(REPO_ROOT / "backend"))
-        from app.db import seed_demo  # type: ignore[import-not-found,unused-ignore]
-    except ImportError as exc:
-        print(
-            "backend app.db.seed_demo is not available yet "
-            f"(expected until Person 1 lands the DB layer): {exc}\n"
-            "fixtures are already the source of truth for lanes; DB seeding "
-            "starts working as soon as P1's models exist.",
-            file=sys.stderr,
-        )
-        return 2
-    seed_demo.seed(reset=reset, fixtures_dir=FIXTURES_DIR)
-    print("golden story seeded" if reset else "golden story upserted")
+        circle_id = seed_golden_circle(session)
+        session.commit()
+    finally:
+        session.close()
+    # The seed always deletes and recreates the circle, so --reset and the default agree.
+    print(f"golden story {'reset' if reset else 'seeded'}: {circle_id}")
     return 0
 
 

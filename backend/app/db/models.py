@@ -98,6 +98,8 @@ class Payout(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     cycle_id: Mapped[str] = mapped_column(ForeignKey("cycles.id"))
+    # Who was paid, fixed when the payout is created: a later order change cannot hide it.
+    recipient_member_id: Mapped[str | None] = mapped_column(String(64), index=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     sender_batch_id: Mapped[str] = mapped_column(String(80), index=True, unique=True)
     paypal_request_id: Mapped[str] = mapped_column(String(80))
@@ -119,6 +121,7 @@ class Invoice(Base):
     paypal_invoice_id: Mapped[str | None] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(16), default="DRAFT")
     note: Mapped[str | None] = mapped_column(Text)
+    reminders_sent: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -146,4 +149,44 @@ class WebhookEvent(Base):
     payload_json: Mapped[str] = mapped_column(Text)
     verified: Mapped[bool] = mapped_column(Boolean, default=False)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class NeedRecord(Base):
+    """A member's latest extracted need (plan Task 6). The raw text is not kept."""
+
+    __tablename__ = "needs"
+    __table_args__ = (UniqueConstraint("circle_id", "member_id", name="uq_need_per_member"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    circle_id: Mapped[str] = mapped_column(ForeignKey("circles.id"), index=True)
+    member_id: Mapped[str] = mapped_column(String(64))
+    need_json: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16))  # "llm" or "rules"
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class OrderProposalRecord(Base):
+    """The circle's current payout-order proposal; approvals are tied to its hash."""
+
+    __tablename__ = "order_proposals"
+
+    circle_id: Mapped[str] = mapped_column(ForeignKey("circles.id"), primary_key=True)
+    proposal_hash: Mapped[str] = mapped_column(String(64))
+    proposal_json: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class OrderApproval(Base):
+    """One member's approval of one proposal (unique, so approving twice is a no-op)."""
+
+    __tablename__ = "order_approvals"
+    __table_args__ = (
+        UniqueConstraint("circle_id", "member_id", "proposal_hash", name="uq_order_approval"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    circle_id: Mapped[str] = mapped_column(ForeignKey("circles.id"), index=True)
+    member_id: Mapped[str] = mapped_column(String(64))
+    proposal_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

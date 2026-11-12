@@ -1,0 +1,14 @@
+# Both images build from the repo root; keep the context small and secret-free.
+.git
+.env
+**/.env
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+backend/.pytest-db
+.superpowers
+docs
+notebooks

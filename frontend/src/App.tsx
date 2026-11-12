@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { CIRCLE_ID, DATA_MODE, getRoster, type RosterMember } from "./api/client";
+import { useEffect, useMemo, useState } from "react";
+import { CIRCLE_ID, DATA_MODE, getRoster, loginAs, type RosterMember } from "./api/client";
 import { AsyncBlock } from "./components/AsyncBlock";
 import { useAsync } from "./hooks/useAsync";
 import { MemberHome } from "./pages/member/MemberHome";
@@ -9,7 +9,24 @@ import type { MemberId, Viewer } from "./types/contracts";
 function Shell({ roster }: { roster: RosterMember[] }) {
   const organiser = roster.find((m) => m.role === "organiser") ?? roster[0];
   const [viewerId, setViewerId] = useState<MemberId | undefined>(organiser?.member_id);
+  // The persona whose token the client currently holds; screens wait for it.
+  const [loggedIn, setLoggedIn] = useState<MemberId | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const me = roster.find((m) => m.member_id === viewerId);
+
+  useEffect(() => {
+    if (!me) return;
+    let current = true;
+    setLoggedIn(null);
+    setLoginError(null);
+    loginAs(me.member_id).then(
+      () => current && setLoggedIn(me.member_id),
+      (e: unknown) => current && setLoginError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => {
+      current = false;
+    };
+  }, [me]);
 
   const names = useMemo(() => {
     const map: Partial<Record<MemberId, string>> = {};
@@ -32,8 +49,16 @@ function Shell({ roster }: { roster: RosterMember[] }) {
           ))}
         </select>
       </div>
-      {/* key resets every screen's state when the viewer changes. */}
-      {viewer.role === "organiser" ? (
+      {loginError ? (
+        <p className="error" role="alert">
+          Could not log in: {loginError}
+        </p>
+      ) : loggedIn !== me.member_id ? (
+        <p className="muted" role="status">
+          Logging in as {me.display_name}...
+        </p>
+      ) : viewer.role === "organiser" ? (
+        // key resets every screen's state when the viewer changes.
         <OrganiserDashboard key={viewer.viewer_id} viewer={viewer} names={names} />
       ) : (
         <MemberHome key={viewer.viewer_id} viewer={viewer} names={names} />
@@ -48,7 +73,7 @@ export default function App() {
     <main className="app">
       <header className="app__header">
         <h1>Gam'eya</h1>
-        <span className="tag">{DATA_MODE === "mock" ? "Mock data" : "Live API"}</span>
+        <span className="tag">{DATA_MODE === "mock" ? "Mock data" : "Live API · PayPal sandbox"}</span>
       </header>
       <AsyncBlock state={roster} loadingText="Loading the circle...">
         {(members) => <Shell roster={members} />}

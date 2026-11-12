@@ -104,3 +104,56 @@ h2 { font-size: 1.125rem; margin-bottom: 0.5rem; }
 }
 
 select:focus-visible, button:focus-visible { outline: 2px solid var(--pick-line); outline-offset: 2px; }
+
+/* Buttons and forms */
+button, .paypal-button {
+  font: inherit;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.55; cursor: default; }
+button.primary, .paypal-button {
+  background: var(--pick-line);
+  border-color: var(--pick-line);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+}
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.field { display: grid; gap: 4px; margin: 8px 0; max-width: 32ch; }
+.field input, .need-form textarea, .need-form select, .chat__form input {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.need-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.need-form textarea { flex: 1 1 320px; resize: vertical; }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.85em; }
+.tag--ok { color: var(--risk-down); border-color: var(--risk-down); }
+
+/* Circle Agent chat */
+.chat { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.chat__msg { max-width: 75ch; padding: 8px 12px; border-radius: 8px; white-space: pre-line; }
+.chat__msg--user { background: var(--pick-bg); justify-self: end; }
+.chat__msg--assistant { background: var(--page); justify-self: start; }
+.chat__form { display: flex; gap: 8px; }
+.chat__form input { flex: 1; }
+.card--inner { border-color: var(--pick-line); margin: 0 0 12px; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 8px 0; }
+.facts div { display: flex; gap: 6px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-weight: 600; }
+
+/* Ledger, payouts, audit detail */
+h3 { font-size: 1rem; margin: 16px 0 8px; }
+.payout-list, .invoice-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.detail { border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin-top: 12px; }
+.detail h3 { margin-top: 0; }
+.detail p { white-space: pre-line; max-width: 75ch; }
+.ag-theme-quartz .ag-row-pinned { font-weight: 600; background: var(--page); }

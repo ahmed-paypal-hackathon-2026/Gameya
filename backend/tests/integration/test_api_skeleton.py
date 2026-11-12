@@ -48,35 +48,8 @@ def test_health_matches_contract(client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("method", "path", "body", "fixture_name"),
     [
-        (
-            "post",
-            "/api/v1/circles",
-            {
-                "spec": {
-                    "name": "El Shorbagh",
-                    "member_count": 6,
-                    "contribution_amount": "100.00",
-                    "start_date": "2026-11-01",
-                    "confirmed": True,
-                }
-            },
-            "circles-create",
-        ),
         ("get", "/api/v1/circles/c-golden", None, "circle-get"),
         ("post", "/api/v1/circles/c-golden/join", {"member_id": "persona-karim"}, "circle-join"),
-        (
-            "post",
-            "/api/v1/circles/c-golden/needs",
-            {"member_id": "persona-karim", "raw_text": "laptop in december", "locale": "en"},
-            "circle-needs",
-        ),
-        ("post", "/api/v1/circles/c-golden/order/propose", {"seed": 42}, "circle-order-propose"),
-        (
-            "post",
-            "/api/v1/circles/c-golden/order/approve",
-            {"member_id": "persona-sara"},
-            "circle-order-propose",
-        ),
         (
             "post",
             "/api/v1/circles/c-golden/copilot",
@@ -105,21 +78,6 @@ def test_health_matches_contract(client: TestClient) -> None:
         ),
         (
             "post",
-            "/api/v1/circles/c-golden/stress-test",
-            {"reserve_pcts": ["0", "3", "10"]},
-            "circles-stress-test",
-        ),
-        ("get", "/api/v1/circles/c-golden/ledger", None, "circle-ledger"),
-        ("get", "/api/v1/circles/c-golden/audit", None, "circle-audit"),
-        ("get", "/api/v1/circles/c-golden/reliability", None, "circle-reliability"),
-        (
-            "post",
-            "/api/v1/agent/circle/chat",
-            {"history": [{"role": "user", "content": "Make a circle of 6 friends, $100 a month."}]},
-            "agent-circle-chat",
-        ),
-        (
-            "post",
             "/api/v1/cycles/cyc-1/pay-now",
             {"member_id": "persona-omar"},
             "cycles-pay-now",
@@ -140,7 +98,11 @@ def test_fixture_routes_serve_golden_shapes(
         assert resp.json() == {"reset": True, "circle_id": "circle-golden-01"}
         return
     if method == "get":
-        resp = client.get(path)
+        # Organiser-only reads: Amina organises the golden circle.
+        token = client.post("/api/v1/auth/demo-login", json={"persona_id": "persona-amina"}).json()[
+            "token"
+        ]
+        resp = client.get(path, headers={"Authorization": f"Bearer {token}"})
     else:
         resp = client.request(method, path, json=body)
     assert resp.status_code == 200, resp.text
@@ -170,14 +132,22 @@ def test_demo_login_roundtrip(client: TestClient) -> None:
 
 
 def test_leash_actor_requires_a_login_token(client: TestClient) -> None:
-    assert client.get("/api/v1/circles/c-golden/leash/policy").status_code == 401
+    assert client.get("/api/v1/circles/circle-golden-01/leash/policy").status_code == 401
     token = client.post("/api/v1/auth/demo-login", json={"persona_id": "persona-amina"}).json()[
         "token"
     ]
     headers = {"Authorization": f"Bearer {token}"}
-    assert client.get("/api/v1/circles/c-golden/leash/policy", headers=headers).status_code == 200
+    policy = client.get("/api/v1/circles/circle-golden-01/leash/policy", headers=headers)
+    assert policy.status_code == 200
 
 
 def test_bad_stress_body_is_422(client: TestClient) -> None:
-    resp = client.post("/api/v1/circles/c-golden/stress-test", json={"reserve_pcts": ["x"]})
+    token = client.post("/api/v1/auth/demo-login", json={"persona_id": "persona-amina"}).json()[
+        "token"
+    ]
+    resp = client.post(
+        "/api/v1/circles/circle-golden-01/stress-test",
+        json={"reserve_pcts": ["x"]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 422

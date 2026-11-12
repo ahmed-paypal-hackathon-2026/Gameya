@@ -43,7 +43,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     guard_startup(get_settings())
     setup_engine(get_settings().database_url)
     init_db()
+    if get_settings().demo_mode:
+        _ensure_golden_circle()
     yield
+
+
+def _ensure_golden_circle() -> None:
+    """Demo mode: a fresh database (e.g. a new Render Postgres) gets the golden circle,
+    so the organiser screens have members to show. An existing circle is left alone."""
+    from .db.models import Circle
+    from .db.seed import GOLDEN_CIRCLE_ID, seed_golden_circle
+
+    session = next(get_db())
+    try:
+        if session.get(Circle, GOLDEN_CIRCLE_ID) is None:
+            seed_golden_circle(session)
+            session.commit()
+    finally:
+        session.close()
 
 
 def create_app() -> FastAPI:

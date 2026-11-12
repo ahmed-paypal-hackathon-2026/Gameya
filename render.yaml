@@ -3,10 +3,11 @@ services:
     name: gameya-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    # backend image includes paypal-agent-toolkit (~170 transitive packages,
-    # langchain etc.) -> large image + heavy imports: plan for >= 2 GB RAM.
-    plan: standard
+    # The Dockerfile copies backend/ and shared/fixtures, so build from the repo root.
+    dockerContext: .
+    # Free tier only (no paid plans). paypal-agent-toolkit is dev-only, so the image
+    # fits in 512 MB. Free services sleep when idle: the first request takes ~1 min.
+    plan: free
     healthCheckPath: /api/v1/health
     autoDeploy: true
     envVars:
@@ -30,6 +31,10 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Set to "0" if Payouts is not enabled on the sandbox app: closing a cycle then
+      # records a BLOCKED payout and sends nothing (never faked as paid).
+      - key: PAYOUTS_ENABLED
+        value: "1"
       - key: DATABASE_URL
         fromDatabase:
           name: gameya-db
@@ -54,4 +59,6 @@ services:
 databases:
   - name: gameya-db
     databaseName: gameya
-    plan: basic-256mb
+    # Free Postgres expires 30 days after creation: recreate it from this Blueprint; the
+    # API seeds the golden circle on the fresh database at startup (DEMO_MODE=1).
+    plan: free

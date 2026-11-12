@@ -27,7 +27,8 @@ from .guardrails import (
     build_decision,
     cap_amount,
     has_link_or_contact,
-    prose_numbers_ok,
+    money_text_problem,
+    safe_display_text,
     wrap_untrusted,
 )
 from .ids import new_id
@@ -84,13 +85,33 @@ def risk_reasons(score: ReliabilityScore) -> list[str]:
     return [f.label for f in score.top_factors if f.contribution > 0]
 
 
+# Names are member-chosen and end up in real PayPal invoices: a name carrying a link
+# or contact is replaced, on the template path as well as the model path.
+_NAME_FALLBACK = {"en": "there", "ar-EG": "حضرتك"}
+_CIRCLE_FALLBACK = {"en": "your circle", "ar-EG": "الجمعية"}
+
+
+def _display_names(member: MemberDue, cycle: CycleDue) -> tuple[str, str]:
+    name = safe_display_text(member.name, _NAME_FALLBACK.get(member.locale, "there"))
+    circle = safe_display_text(
+        cycle.circle_name, _CIRCLE_FALLBACK.get(member.locale, "your circle")
+    )
+    return name, circle
+
+
+def _cycle_number(cycle_index: int) -> int:
+    """Members count cycles from 1; the engine's cycle_index is 0-based."""
+    return cycle_index + 1
+
+
 def _template_message(kind: ChaseKind, member: MemberDue, cycle: CycleDue, amount: Decimal) -> str:
+    name, circle = _display_names(member, cycle)
     return TEMPLATES[(kind, member.locale)].format(
-        name=member.name,
+        name=name,
         amount=f"{amount:.2f}",
-        cycle_index=cycle.cycle_index,
+        cycle_index=_cycle_number(cycle.cycle_index),
         due=cycle.due_at.date().isoformat(),
-        circle=cycle.circle_name,
+        circle=circle,
     )
 
 
@@ -108,15 +129,17 @@ async def _model_message(
 ) -> tuple[str, str] | None:
     """One LLM call. Returns (text, model name) only if the text passes every check."""
     due = cycle.due_at.date()
+    name, circle = _display_names(member, cycle)
+    cycle_number = _cycle_number(cycle.cycle_index)
     prompt = "\n".join(
         [
             f"Locale: {member.locale}",
             f"Message type: {kind}",
-            f"Member name: {wrap_untrusted(member.name, max_chars=80)}",
-            f"Circle name: {wrap_untrusted(cycle.circle_name, max_chars=80)}",
+            f"Member name: {wrap_untrusted(name, max_chars=80)}",
+            f"Circle name: {wrap_untrusted(circle, max_chars=80)}",
             f"Amount: ${amount:.2f}",
             f"Due date: {due.isoformat()}",
-            f"Cycle: {cycle.cycle_index}",
+            f"Cycle: {cycle_number}",
         ]
     )
     answered: list[str] = []
@@ -136,14 +159,12 @@ async def _model_message(
     if result is None:
         return None
     text = result.text.strip()
-    allowed = [f"{amount:.2f}", f"{due.year:04d}", f"{due.month:02d}", f"{due.day:02d}"]
-    allowed.append(str(cycle.cycle_index))
     lowered = text.lower()
     if (
         not text
         or len(text) > MAX_MESSAGE_CHARS
         or has_link_or_contact(text)
-        or not prose_numbers_ok(text, allowed)
+        or money_text_problem(text, amount=amount, due=due, cycle_number=cycle_number) is not None
         or any(f.label.lower() in lowered for f in score.top_factors)
     ):
         return None
@@ -317,7 +338,7 @@ def _invoice_params(plan: ChasePlan) -> CreateInvoiceParameters:
         ],
         items=[
             Item(
-                name=f"Gam'eya contribution, cycle {plan.cycle_index}",
+                name=f"Gam'eya contribution, cycle {_cycle_number(plan.cycle_index)}",
                 quantity="1",
                 unit_amount=PlanMoney(currency_code="USD", value=f"{plan.invoice_amount:.2f}"),
             )
@@ -329,15 +350,20 @@ async def execute_chase(
     plan: ChasePlan,
     *,
     executor: ToolExecutor,
+    contribution_amount: Decimal,
     attempt_invoice_id: str | None = None,
 ) -> ChaseResult:
     """Run an approved INVOICE or REMINDER plan through the guarded toolkit executor.
+
+    The cap is re-checked here, right before PayPal is called: plans are stored and
+    reloaded between planning and execution, so the planning-time check is not enough.
 
     Pass `attempt_invoice_id` (from `ChaseStepFailed.invoice_id`) to retry without creating a
     second invoice. Request ids are keyed by `plan.plan_id`, so a retry reuses them.
     """
     if plan.action not in (ChaseAction.INVOICE, ChaseAction.REMINDER):
         raise ValueError(f"cannot execute a {plan.action.value} plan")
+    plan.assert_within_contribution(contribution_amount)
     if not plan.plan_id:
         raise ValueError("plan has no plan_id")
     key = plan.plan_id

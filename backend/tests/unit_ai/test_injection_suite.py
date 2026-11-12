@@ -274,7 +274,7 @@ def _assert_member_prose(text: str | None, member: MemberDue, cycle: CycleDue, a
         f"{due.year:04d}",
         f"{due.month:02d}",
         f"{due.day:02d}",
-        str(cycle.cycle_index),
+        str(cycle.cycle_index + 1),
     ]
     assert prose_numbers_ok(body, allowed), body
     assert not has_link_or_contact(body), body
@@ -326,7 +326,7 @@ async def test_smart_chase_injection(
     if kind == "nudge":
         return
     executor = FakeExecutor(results={"generate_invoice_qr_code": {"qr_code_base64": "iVBOR="}})
-    result = await execute_chase(plan, executor=executor)
+    result = await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
     names = [call[0] for call in executor.calls]
     assert set(names) <= CHASE_ALLOWED
     assert [t.name.value for t in result.tool_calls] == names

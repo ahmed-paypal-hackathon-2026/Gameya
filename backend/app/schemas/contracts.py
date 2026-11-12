@@ -537,6 +537,8 @@ class CircleAgentChatResponse(StrictModel):
 
 class CreateCircleRequest(StrictModel):
     spec: CircleSpec
+    # Safety reserve the Stress-Test recommends, collected once as the plan's setup fee.
+    reserve_pct: Decimal = Field(default=Decimal("0"), ge=0, le=Decimal("10"))
 
     @model_validator(mode="after")
     def _must_be_confirmed(self) -> CreateCircleRequest:

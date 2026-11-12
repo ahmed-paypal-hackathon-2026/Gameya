@@ -172,7 +172,7 @@ async def test_smart_chase_survives_outage(mode: str, kind: str) -> None:
 
     if kind != "nudge":
         executor = FakeExecutor(results={"generate_invoice_qr_code": {"qr_code_base64": "iVBOR="}})
-        result = await execute_chase(plan, executor=executor)
+        result = await execute_chase(plan, executor=executor, contribution_amount=Decimal("100.00"))
         assert result.invoice_id
         assert result.decision.model == "template"
 
