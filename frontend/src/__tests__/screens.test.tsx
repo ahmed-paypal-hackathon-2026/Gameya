@@ -177,7 +177,12 @@ describe("reliability privacy", () => {
     await screen.findByText("Recommended", {}, { timeout: 3000 });
     await screen.findByText(/needed by 15 Dec 2026/, {}, { timeout: 3000 });
 
-    fireEvent.change(screen.getByLabelText("Viewing as"), { target: { value: "mem-omar" } });
+    fireEvent.click(screen.getByRole("button", { name: /viewing as/i }));
+    fireEvent.click(
+      within(screen.getByRole("listbox", { name: "Choose a member" })).getByRole("option", {
+        name: /Omar/,
+      }),
+    );
     await screen.findByText(/needed by 15 Dec 2026/, {}, { timeout: 3000 });
 
     await waitFor(() => expect(screen.queryByText("Chance of paying late")).toBeNull());

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CIRCLE_ID, DATA_MODE, getRoster, loginAs, type RosterMember } from "./api/client";
 import { AsyncBlock } from "./components/AsyncBlock";
 import { initialOf } from "./components/CircleHero";
+import { MemberPicker } from "./components/MemberPicker";
 import { useAsync } from "./hooks/useAsync";
 import { MemberHome } from "./pages/member/MemberHome";
 import { OrganiserDashboard } from "./pages/organiser/OrganiserDashboard";
@@ -51,14 +52,7 @@ function Shell({ roster }: { roster: RosterMember[] }) {
           <span className="persona__role">{me.role === "organiser" ? "Circle organiser" : "Circle member"}</span>
         </div>
         <div className="persona__switch">
-          <label htmlFor="viewer">Viewing as</label>
-          <select id="viewer" value={me.member_id} onChange={(e) => setViewerId(e.target.value)}>
-            {roster.map((m) => (
-              <option key={m.member_id} value={m.member_id}>
-                {m.display_name} ({m.role})
-              </option>
-            ))}
-          </select>
+          <MemberPicker members={roster} value={me.member_id} onChange={setViewerId} />
         </div>
       </div>
       {loginError ? (

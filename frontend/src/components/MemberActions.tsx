@@ -7,6 +7,12 @@ import { useAsync } from "../hooks/useAsync";
 import type { Locale, Viewer } from "../types/contracts";
 import { formatUsd, NEED_CATEGORY_LABEL } from "../lib/format";
 import { AsyncBlock } from "./AsyncBlock";
+import { Dropdown } from "./Dropdown";
+
+const LANGUAGES: { locale: Locale; name: string; badge: string; hint: string }[] = [
+  { locale: "en", name: "English", badge: "EN", hint: "Write your need in English" },
+  { locale: "ar-EG", name: "العربية (مصر)", badge: "ع", hint: "Egyptian Arabic" },
+];
 
 export function MyInvoicesCard({ viewer }: { viewer: Viewer }) {
   const state = useAsync(() => getMyInvoices(viewer.circle_id), [viewer.viewer_id, viewer.circle_id]);
@@ -99,15 +105,35 @@ export function NeedForm({ viewer }: { viewer: Viewer }) {
           dir="auto"
           placeholder="e.g. School fees in December, about $600"
         />
-        <label htmlFor="need-locale">Language</label>
-        <select
-          id="need-locale"
-          value={locale}
-          onChange={(e) => setLocale(e.target.value as Locale)}
-        >
-          <option value="en">English</option>
-          <option value="ar-EG">العربية (مصر)</option>
-        </select>
+        <Dropdown
+          items={LANGUAGES}
+          selectedIndex={LANGUAGES.findIndex((l) => l.locale === locale)}
+          onPick={(l) => setLocale(l.locale)}
+          itemKey={(l) => l.locale}
+          triggerLabel={`Language: ${LANGUAGES.find((l) => l.locale === locale)?.name ?? locale}. Change language`}
+          listLabel="Choose a language"
+          renderTrigger={(l) => (
+            <>
+              <span className="lang-badge" aria-hidden="true">
+                {l.badge}
+              </span>
+              <span className="picker__name">{l.name}</span>
+            </>
+          )}
+          renderOption={(l) => (
+            <>
+              <span className="lang-badge" aria-hidden="true">
+                {l.badge}
+              </span>
+              <span className="picker__option-text">
+                <span className="picker__option-name" lang={l.locale}>
+                  {l.name}
+                </span>
+                <span className="picker__option-sub">{l.hint}</span>
+              </span>
+            </>
+          )}
+        />
         <button type="submit" disabled={busy || !text.trim()}>
           {busy ? "Reading..." : "Submit need"}
         </button>

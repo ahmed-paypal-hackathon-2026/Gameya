@@ -4,7 +4,7 @@
 import { useState } from "react";
 import { type CycleAction, cycleIdFor, runCycleAction } from "../api/client";
 import type { CircleDetail, MemberId } from "../types/contracts";
-import { formatIsoDate } from "../lib/format";
+import { CyclePicker } from "./CyclePicker";
 
 const BUTTONS: { action: CycleAction; label: string }[] = [
   { action: "collect", label: "Collect" },
@@ -26,7 +26,6 @@ export function CycleActions({
   const [busy, setBusy] = useState<CycleAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  const cycle = circle.cycles.find((c) => c.cycle_index === index);
 
   async function run(action: CycleAction) {
     setBusy(action);
@@ -53,16 +52,7 @@ export function CycleActions({
         </p>
       </div>
       <div className="cycle-pick">
-        <label htmlFor="cycle">Cycle</label>
-        <select id="cycle" value={index} onChange={(e) => setIndex(Number(e.target.value))}>
-          {circle.cycles.map((c) => (
-            <option key={c.cycle_index} value={c.cycle_index}>
-              {c.cycle_index + 1}: due {formatIsoDate(c.due_date)}
-              {c.recipient_id ? `, pot to ${names[c.recipient_id] ?? c.recipient_id}` : ""}
-            </option>
-          ))}
-        </select>
-        {cycle ? <span className={`tag tag--${cycle.status}`}>{cycle.status.replace("_", " ")}</span> : null}
+        <CyclePicker cycles={circle.cycles} names={names} value={index} onChange={setIndex} />
       </div>
       <div className="actions">
         {BUTTONS.map((b) => (
