@@ -23,10 +23,12 @@ from ..db.models import (
     AgentDecision,
     Circle,
     Cycle,
+    Invoice,
     Membership,
     NeedRecord,
     OrderApproval,
     OrderProposalRecord,
+    Payout,
 )
 from ..db.seed import buyer_email
 from ..ml.reliability.personas import PERSONA_FEATURES
@@ -354,6 +356,24 @@ def slot_dates(db: Session, circle_id: str) -> list[SlotDate]:
     return [SlotDate(slot_index=c.cycle_index, payout_date=c.due_date) for c in cycles]
 
 
+def order_frozen(db: Session, circle_id: str) -> bool:
+    """True once any invoice or payout exists: from then on the payout order is fixed,
+    so a new proposal can never move a recipient of a cycle already collected or paid."""
+    if db.scalars(select(Invoice.id).where(Invoice.circle_id == circle_id)).first():
+        return True
+    cycle_ids = select(Cycle.id).where(Cycle.circle_id == circle_id)
+    return db.scalars(select(Payout.id).where(Payout.cycle_id.in_(cycle_ids))).first() is not None
+
+
+def current_proposal(db: Session, circle_id: str) -> OrderProposal | None:
+    row = db.get(OrderProposalRecord, circle_id)
+    return None if row is None else OrderProposal.model_validate_json(row.proposal_json)
+
+
+def same_order(a: OrderProposal, b: OrderProposal) -> bool:
+    return _proposal_hash(a) == _proposal_hash(b)
+
+
 def _proposal_hash(proposal: OrderProposal) -> str:
     order = [(a.slot_index, a.member_id) for a in proposal.assignments]
     return hashlib.sha256(json.dumps([proposal.seed, order]).encode()).hexdigest()
@@ -411,6 +431,8 @@ def approve_order(db: Session, circle_id: str, member_id: str) -> OrderProposal:
         ).all()
     )
     seats = active_members(db, circle_id)
+    if order_frozen(db, circle_id):
+        return proposal  # money has moved: the order applied before stays
     if seats and all(m.member_id in approved for m in seats):
         slot_of = {a.member_id: a.slot_index for a in proposal.assignments}
         for m in seats:

@@ -76,8 +76,6 @@ def test_health_matches_contract(client: TestClient) -> None:
             {"approver_id": "persona-youssef"},
             "circle-swaps",
         ),
-        ("get", "/api/v1/circles/circle-golden-01/ledger", None, "circle-ledger"),
-        ("get", "/api/v1/circles/circle-golden-01/audit", None, "circle-audit"),
         (
             "post",
             "/api/v1/cycles/cyc-1/pay-now",

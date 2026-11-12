@@ -10,6 +10,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from ulid import ULID
 
@@ -21,6 +23,7 @@ from ..ai.needs_extractor import extract_need_detailed
 from ..ai.toolkit_adapter import ToolExecutor
 from ..auth import actor_from_request, require_organiser
 from ..db import get_db
+from ..db.models import Cycle, Invoice
 from ..ml.stress_test import explain_stress_test, run_stress_test
 from ..schemas.contracts import (
     AgentName,
@@ -50,7 +53,7 @@ from ..schemas.contracts import (
     SwapCreateRequest,
     SwapProposal,
 )
-from ..services import circle_data
+from ..services import circle_data, ledger_view
 from ..services.circle_data import (
     active_members,
     circle_detail,
@@ -186,6 +189,46 @@ async def submit_need(
     return need
 
 
+PAYPAL_INVOICE_PAY_URL = "https://www.sandbox.paypal.com/invoice/p/#{invoice_id}"
+
+
+class MyInvoice(BaseModel):
+    cycle_index: int
+    paypal_invoice_id: str
+    amount: str
+    status: str
+    paid: bool
+    pay_url: str
+
+
+@router.get("/{circle_id}/my-invoices", response_model=list[MyInvoice])
+def my_invoices(circle_id: str, actor: LoggedIn, db: DbSession) -> list[MyInvoice]:
+    """The logged-in member's own invoices, each with its PayPal (sandbox) payment page."""
+    _require_member(db, circle_id, actor)
+    cycles = {
+        c.id: c.cycle_index for c in db.scalars(select(Cycle).where(Cycle.circle_id == circle_id))
+    }
+    rows = db.scalars(
+        select(Invoice).where(
+            Invoice.circle_id == circle_id,
+            Invoice.member_id == actor.user_id,
+            Invoice.paypal_invoice_id.is_not(None),
+        )
+    ).all()
+    out = [
+        MyInvoice(
+            cycle_index=cycles.get(i.cycle_id, 0),
+            paypal_invoice_id=i.paypal_invoice_id or "",
+            amount=f"{i.amount:.2f}",
+            status=i.status,
+            paid=i.status == "PAID",
+            pay_url=PAYPAL_INVOICE_PAY_URL.format(invoice_id=i.paypal_invoice_id),
+        )
+        for i in rows
+    ]
+    return sorted(out, key=lambda m: m.cycle_index)
+
+
 @router.get("/{circle_id}/needs", response_model=list[NeedExtraction])
 def get_needs(circle_id: str, actor: LoggedIn, db: DbSession) -> list[NeedExtraction]:
     """Every stored need in the circle (members see them on the order card)."""
@@ -207,8 +250,18 @@ async def propose_order(
             status_code=409,
             detail=f"{len(profiles)} active members for {len(slots)} cycles: fill every seat first",
         )
+    stored = circle_data.current_proposal(db, circle_id)
+    if circle_data.order_frozen(db, circle_id):
+        # Invoices or payouts exist: the order is fixed and only shown, never recomputed.
+        if stored is None:
+            raise HTTPException(
+                status_code=409, detail="the payout order is fixed once collection started"
+            )
+        return stored
     seed = derive_seed(circle_id, [p.member.member_id for p in profiles])
     proposal = await asyncio.to_thread(propose_payout_order, profiles, slots, seed)
+    if stored is not None and circle_data.same_order(stored, proposal):
+        return stored  # unchanged: no new explanation call, no audit row, approvals kept
     explained = await explain_order_detailed(proposal, profiles, default_llm_client())
     proposal = proposal.model_copy(update={"explanations": explained.texts})
     save_proposal(db, circle_id, proposal)
@@ -287,17 +340,17 @@ async def stress_test(
 
 
 @router.get("/{circle_id}/ledger", response_model=LedgerResponse)
-def ledger(circle_id: str, response: Response, actor: OrganiserActor) -> LedgerResponse:
+def ledger(circle_id: str, actor: OrganiserActor, db: DbSession) -> LedgerResponse:
+    """Contributions and payouts with their real PayPal ids (organiser-only)."""
     require_organiser(actor, circle_id)
-    response.headers.update(DEMO_HEADER)
-    return LedgerResponse.model_validate(fixture("circle-ledger"))
+    return ledger_view.ledger(db, circle_id)
 
 
 @router.get("/{circle_id}/audit", response_model=AuditResponse)
-def audit(circle_id: str, response: Response, actor: OrganiserActor) -> AuditResponse:
+def audit(circle_id: str, actor: OrganiserActor, db: DbSession) -> AuditResponse:
+    """Every AI decision for this circle, newest first (organiser-only)."""
     require_organiser(actor, circle_id)
-    response.headers.update(DEMO_HEADER)
-    return AuditResponse.model_validate(fixture("circle-audit"))
+    return ledger_view.audit(db, circle_id)
 
 
 @router.get("/{circle_id}/reliability", response_model=ReliabilityResponse)

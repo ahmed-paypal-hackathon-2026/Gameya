@@ -36,6 +36,9 @@ class Settings:
         self.paypal_client_secret: str = os.environ.get("PAYPAL_CLIENT_SECRET", "")
         self.paypal_webhook_id: str = os.environ.get("PAYPAL_WEBHOOK_ID", "")
         self.gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
+        # Plan contingency C1: with Payouts not enabled on the sandbox app, closing a cycle
+        # records a BLOCKED payout instead of calling PayPal. Never faked as paid.
+        self.payouts_enabled: bool = _flag(os.environ.get("PAYOUTS_ENABLED", "1"))
         # Signs demo-login tokens. Production must set it (guard_startup); elsewhere a
         # per-process random secret is fine because tokens only need to outlive one run.
         self.session_secret_configured: bool = bool(os.environ.get("SESSION_SECRET"))
