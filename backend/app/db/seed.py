@@ -15,7 +15,18 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..api.fixtures import fixture
-from .models import AgentDecision, Circle, Contribution, Cycle, Invoice, Membership, Payout
+from .models import (
+    AgentDecision,
+    Circle,
+    Contribution,
+    Cycle,
+    Invoice,
+    Membership,
+    NeedRecord,
+    OrderApproval,
+    OrderProposalRecord,
+    Payout,
+)
 
 GOLDEN_CIRCLE_ID = "circle-golden-01"
 SANDBOX_EMAIL_DOMAIN = "gameya-sandbox.dev"
@@ -38,6 +49,9 @@ def delete_circle(session: Session, circle_id: str) -> None:
     session.execute(delete(Contribution).where(Contribution.cycle_id.in_(cycle_ids)))
     session.execute(delete(Payout).where(Payout.cycle_id.in_(cycle_ids)))
     session.execute(delete(AgentDecision).where(AgentDecision.circle_id == circle_id))
+    session.execute(delete(NeedRecord).where(NeedRecord.circle_id == circle_id))
+    session.execute(delete(OrderApproval).where(OrderApproval.circle_id == circle_id))
+    session.execute(delete(OrderProposalRecord).where(OrderProposalRecord.circle_id == circle_id))
     session.execute(delete(Membership).where(Membership.circle_id == circle_id))
     session.execute(delete(Cycle).where(Cycle.circle_id == circle_id))
     session.execute(delete(Circle).where(Circle.id == circle_id))

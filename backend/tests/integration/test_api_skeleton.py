@@ -52,19 +52,6 @@ def test_health_matches_contract(client: TestClient) -> None:
         ("post", "/api/v1/circles/c-golden/join", {"member_id": "persona-karim"}, "circle-join"),
         (
             "post",
-            "/api/v1/circles/c-golden/needs",
-            {"member_id": "persona-karim", "raw_text": "laptop in december", "locale": "en"},
-            "circle-needs",
-        ),
-        ("post", "/api/v1/circles/c-golden/order/propose", {"seed": 42}, "circle-order-propose"),
-        (
-            "post",
-            "/api/v1/circles/c-golden/order/approve",
-            {"member_id": "persona-sara"},
-            "circle-order-propose",
-        ),
-        (
-            "post",
             "/api/v1/circles/c-golden/copilot",
             {"member_id": "persona-youssef", "question": "When is my payout?"},
             "circle-copilot",
@@ -89,15 +76,8 @@ def test_health_matches_contract(client: TestClient) -> None:
             {"approver_id": "persona-youssef"},
             "circle-swaps",
         ),
-        (
-            "post",
-            "/api/v1/circles/c-golden/stress-test",
-            {"reserve_pcts": ["0", "3", "10"]},
-            "circles-stress-test",
-        ),
         ("get", "/api/v1/circles/circle-golden-01/ledger", None, "circle-ledger"),
         ("get", "/api/v1/circles/circle-golden-01/audit", None, "circle-audit"),
-        ("get", "/api/v1/circles/circle-golden-01/reliability", None, "circle-reliability"),
         (
             "post",
             "/api/v1/cycles/cyc-1/pay-now",
@@ -164,5 +144,12 @@ def test_leash_actor_requires_a_login_token(client: TestClient) -> None:
 
 
 def test_bad_stress_body_is_422(client: TestClient) -> None:
-    resp = client.post("/api/v1/circles/c-golden/stress-test", json={"reserve_pcts": ["x"]})
+    token = client.post("/api/v1/auth/demo-login", json={"persona_id": "persona-amina"}).json()[
+        "token"
+    ]
+    resp = client.post(
+        "/api/v1/circles/circle-golden-01/stress-test",
+        json={"reserve_pcts": ["x"]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 422

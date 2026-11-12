@@ -1,7 +1,11 @@
-"""Interface-2 circle routes, M1 fixture-backed (WP-1.1). WP-1.3 swaps the engine in."""
+"""Interface-2 circle routes. Circle creation, needs, fair order, stress-test and
+reliability are served by the engine from the database; the routes still marked
+with X-Demo-Fixture serve the golden story until their task wires them."""
 
 from __future__ import annotations
 
+import asyncio
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -10,10 +14,16 @@ from sqlalchemy.orm import Session
 from ulid import ULID
 
 from ..ai.circle_agent import CircleCreationFailed, circle_agent_turn, paypal_references
+from ..ai.fair_order import derive_seed, explain_order_detailed, propose_payout_order
+from ..ai.guardrails import build_decision
+from ..ai.llm import default_llm_client
+from ..ai.needs_extractor import extract_need_detailed
 from ..ai.toolkit_adapter import ToolExecutor
 from ..auth import actor_from_request, require_organiser
 from ..db import get_db
+from ..ml.stress_test import explain_stress_test, run_stress_test
 from ..schemas.contracts import (
+    AgentName,
     AuditResponse,
     CircleAgentChatRequest,
     CircleAgentChatResponse,
@@ -33,13 +43,28 @@ from ..schemas.contracts import (
     OrderProposal,
     OrderProposeRequest,
     ReliabilityResponse,
+    ReliabilityRow,
     StressTestRequest,
     StressTestResult,
     SwapApprovalRequest,
     SwapCreateRequest,
     SwapProposal,
 )
-from ..services.circle_data import circle_detail, create_circle_rows, record_decision
+from ..services import circle_data
+from ..services.circle_data import (
+    active_members,
+    circle_detail,
+    circle_snapshot,
+    create_circle_rows,
+    is_member,
+    list_needs,
+    member_profiles,
+    record_decision,
+    reliability_scores,
+    save_need,
+    save_proposal,
+    slot_dates,
+)
 from ..services.paypal.executor import get_tool_executor
 from .fixtures import fixture
 from .leash import Actor
@@ -54,6 +79,20 @@ router = APIRouter(prefix="/api/v1/circles", tags=["circles"])
 agent_router = APIRouter(prefix="/api/v1", tags=["agent"])
 
 DEMO_HEADER = {"X-Demo-Fixture": "1"}  # transparency: M1 serves the golden story
+
+
+def _require_member(db: Session, circle_id: str, actor: Actor) -> None:
+    """404 for an unknown circle, 403 unless the actor has a seat in it."""
+    if circle_snapshot(db, circle_id) is None:
+        raise HTTPException(status_code=404, detail="circle not found")
+    if not is_member(db, circle_id, actor.user_id):
+        raise HTTPException(status_code=403, detail="you are not a member of this circle")
+
+
+def _require_self(actor: Actor, member_id: str) -> None:
+    """A member acts only for themselves: the body cannot name someone else."""
+    if member_id != actor.user_id:
+        raise HTTPException(status_code=403, detail="you can only act for yourself")
 
 
 @router.post("", response_model=CircleCreateResponse)
@@ -123,21 +162,80 @@ def join_circle(circle_id: str, body: JoinCircleRequest, response: Response) -> 
 
 
 @router.post("/{circle_id}/needs", response_model=NeedExtraction)
-def submit_need(circle_id: str, body: NeedSubmissionRequest, response: Response) -> NeedExtraction:
-    response.headers.update(DEMO_HEADER)
-    return NeedExtraction.model_validate(fixture("circle-needs"))
+async def submit_need(
+    circle_id: str, body: NeedSubmissionRequest, actor: LoggedIn, db: DbSession
+) -> NeedExtraction:
+    """Extract the member's need (LLM if configured, else the rules) and store it."""
+    _require_self(actor, body.member_id)
+    _require_member(db, circle_id, actor)
+    snapshot = circle_snapshot(db, circle_id)
+    assert snapshot is not None
+    result = await extract_need_detailed(body.raw_text, body.locale, snapshot, default_llm_client())
+    need = result.need.model_copy(update={"member_id": MemberId(actor.user_id)})
+    save_need(db, circle_id, need, result.source)
+    record_decision(
+        db,
+        build_decision(
+            AgentName.NEEDS_EXTRACTOR,
+            circle_id=circle_id,
+            model=result.model or result.source,
+            rationale=f"Extracted a {need.category.value} need for {actor.user_id}.",
+        ),
+        actor.user_id,
+    )
+    return need
+
+
+@router.get("/{circle_id}/needs", response_model=list[NeedExtraction])
+def get_needs(circle_id: str, actor: LoggedIn, db: DbSession) -> list[NeedExtraction]:
+    """Every stored need in the circle (members see them on the order card)."""
+    _require_member(db, circle_id, actor)
+    return list_needs(db, circle_id)
 
 
 @router.post("/{circle_id}/order/propose", response_model=OrderProposal)
-def propose_order(circle_id: str, body: OrderProposeRequest, response: Response) -> OrderProposal:
-    response.headers.update(DEMO_HEADER)
-    return OrderProposal.model_validate(fixture("circle-order-propose"))
+async def propose_order(
+    circle_id: str, body: OrderProposeRequest, actor: LoggedIn, db: DbSession
+) -> OrderProposal:
+    """The fair order from the optimiser. The request's seed is ignored: the tie-break
+    seed is derived from the circle and its members, so nobody can steer ties."""
+    _require_member(db, circle_id, actor)
+    profiles = member_profiles(db, circle_id)
+    slots = slot_dates(db, circle_id)
+    if len(profiles) != len(slots):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{len(profiles)} active members for {len(slots)} cycles: fill every seat first",
+        )
+    seed = derive_seed(circle_id, [p.member.member_id for p in profiles])
+    proposal = await asyncio.to_thread(propose_payout_order, profiles, slots, seed)
+    explained = await explain_order_detailed(proposal, profiles, default_llm_client())
+    proposal = proposal.model_copy(update={"explanations": explained.texts})
+    save_proposal(db, circle_id, proposal)
+    record_decision(
+        db,
+        build_decision(
+            AgentName.FAIR_ORDER,
+            circle_id=circle_id,
+            model=explained.model or "hungarian+template",
+            rationale=f"Proposed the payout order with tie-break seed {seed}; awaiting approvals.",
+        ),
+        actor.user_id,
+    )
+    return proposal
 
 
 @router.post("/{circle_id}/order/approve", response_model=OrderProposal)
-def approve_order(circle_id: str, body: OrderApprovalRequest, response: Response) -> OrderProposal:
-    response.headers.update(DEMO_HEADER)
-    return OrderProposal.model_validate(fixture("circle-order-propose"))
+def approve_order(
+    circle_id: str, body: OrderApprovalRequest, actor: LoggedIn, db: DbSession
+) -> OrderProposal:
+    """Record the member's approval; the order applies once every member approves."""
+    _require_self(actor, body.member_id)
+    _require_member(db, circle_id, actor)
+    try:
+        return circle_data.approve_order(db, circle_id, actor.user_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{circle_id}/copilot", response_model=CopilotAnswer)
@@ -161,9 +259,31 @@ def approve_swap(
 
 
 @router.post("/{circle_id}/stress-test", response_model=StressTestResult)
-def stress_test(circle_id: str, body: StressTestRequest, response: Response) -> StressTestResult:
-    response.headers.update(DEMO_HEADER)
-    return StressTestResult.model_validate(fixture("circles-stress-test"))
+async def stress_test(
+    circle_id: str, body: StressTestRequest, actor: OrganiserActor, db: DbSession
+) -> StressTestResult:
+    """Monte Carlo completion odds per reserve % (organiser-only: built from P(late))."""
+    require_organiser(actor, circle_id)
+    snapshot = circle_snapshot(db, circle_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="circle not found")
+    scores = list(reliability_scores(db, circle_id).values())
+    if len(scores) != snapshot.size_n:
+        raise HTTPException(status_code=409, detail="fill every seat before the stress-test")
+    pcts = [Decimal(p) for p in body.reserve_pcts]
+    try:
+        result = await asyncio.to_thread(
+            run_stress_test, snapshot, scores, pcts, body.n_sims, body.seed
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    locale = next(
+        (m.locale for m in active_members(db, circle_id) if m.member_id == actor.user_id), "en"
+    )
+    text = await explain_stress_test(
+        result, default_llm_client(), "ar-EG" if locale == "ar-EG" else "en", circle=snapshot
+    )
+    return result.model_copy(update={"explanation": text})
 
 
 @router.get("/{circle_id}/ledger", response_model=LedgerResponse)
@@ -181,10 +301,20 @@ def audit(circle_id: str, response: Response, actor: OrganiserActor) -> AuditRes
 
 
 @router.get("/{circle_id}/reliability", response_model=ReliabilityResponse)
-def reliability(circle_id: str, response: Response, actor: OrganiserActor) -> ReliabilityResponse:
+def reliability(circle_id: str, actor: OrganiserActor, db: DbSession) -> ReliabilityResponse:
     require_organiser(actor, circle_id)
-    response.headers.update(DEMO_HEADER)
-    return ReliabilityResponse.model_validate(fixture("circle-reliability"))
+    scores = reliability_scores(db, circle_id)
+    return ReliabilityResponse(
+        circle_id=CircleId(circle_id),
+        rows=[
+            ReliabilityRow(
+                member_id=MemberId(m.member_id),
+                display_name=m.name,
+                score=scores[MemberId(m.member_id)],
+            )
+            for m in active_members(db, circle_id)
+        ],
+    )
 
 
 @agent_router.post("/agent/circle/chat", response_model=CircleAgentChatResponse)

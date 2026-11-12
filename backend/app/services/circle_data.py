@@ -10,6 +10,7 @@ as the `CircleDetail` contract, so GET and POST answer with the same shape.
 from __future__ import annotations
 
 import calendar
+import hashlib
 import json
 from datetime import date, timedelta
 from decimal import Decimal
@@ -18,21 +19,38 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..api.fixtures import fixture
-from ..db.models import AgentDecision, Circle, Cycle, Membership
+from ..db.models import (
+    AgentDecision,
+    Circle,
+    Cycle,
+    Membership,
+    NeedRecord,
+    OrderApproval,
+    OrderProposalRecord,
+)
 from ..db.seed import buyer_email
+from ..ml.reliability.personas import PERSONA_FEATURES
+from ..ml.reliability.scorer import score_reliability
 from ..schemas.contracts import (
     AgentDecision as AgentDecisionContract,
 )
 from ..schemas.contracts import (
     CircleDetail,
     CircleId,
+    CircleSnapshot,
     CircleSpec,
     CycleSnapshot,
     CycleStatus,
     CycleUnit,
     MemberId,
+    MemberProfile,
     MemberSnapshot,
+    NeedExtraction,
+    OrderProposal,
+    ReliabilityFeatures,
+    ReliabilityScore,
     Role,
+    SlotDate,
 )
 
 CENT = Decimal("0.01")
@@ -220,3 +238,185 @@ def organised_circle_ids(db: Session, member_id: str) -> frozenset[str]:
         )
     ).all()
     return frozenset(rows)
+
+
+# ---------- P3 engine inputs (plan Task 6) ----------
+# A member with no payment history yet: a fresh account, nothing late, nothing completed.
+NEW_MEMBER_FEATURES = ReliabilityFeatures(
+    on_time_ratio=1.0,
+    avg_days_late=0.0,
+    cycles_completed=0,
+    failed_payments=0,
+    invoices_needed=0,
+    circles_completed=0,
+    account_age_days=30,
+)
+
+
+def circle_snapshot(db: Session, circle_id: str) -> CircleSnapshot | None:
+    circle = db.get(Circle, circle_id)
+    if circle is None:
+        return None
+    return CircleSnapshot(
+        circle_id=CircleId(circle.id),
+        name=circle.name,
+        contribution_amount=circle.contribution_amount.quantize(CENT),
+        currency="USD",
+        cycle_unit=CycleUnit(circle.cycle_unit),
+        size_n=circle.size_n,
+        start_date=circle.start_date,
+        reserve_pct=circle.reserve_pct,
+    )
+
+
+def active_members(db: Session, circle_id: str) -> list[Membership]:
+    """Active seats, in a stable order (by member id)."""
+    return list(
+        db.scalars(
+            select(Membership)
+            .where(Membership.circle_id == circle_id, Membership.is_active.is_(True))
+            .order_by(Membership.member_id)
+        ).all()
+    )
+
+
+def is_member(db: Session, circle_id: str, member_id: str) -> bool:
+    return any(m.member_id == member_id for m in active_members(db, circle_id))
+
+
+def reliability_scores(db: Session, circle_id: str) -> dict[MemberId, ReliabilityScore]:
+    """P(late) per active member. Demo personas use their simulated histories
+    (PERSONA_FEATURES); anyone else is scored as a new member with no history."""
+    scores: dict[MemberId, ReliabilityScore] = {}
+    for m in active_members(db, circle_id):
+        member_id = MemberId(m.member_id)
+        features = PERSONA_FEATURES.get(m.member_id.removeprefix("mem-"), NEW_MEMBER_FEATURES)
+        scores[member_id] = score_reliability(features, member_id)
+    return scores
+
+
+def save_need(db: Session, circle_id: str, need: NeedExtraction, source: str) -> None:
+    """Store (or replace) a member's need."""
+    if need.member_id is None:
+        raise ValueError("a stored need must name its member")
+    row = db.scalars(
+        select(NeedRecord).where(
+            NeedRecord.circle_id == circle_id, NeedRecord.member_id == need.member_id
+        )
+    ).first()
+    payload = need.model_dump_json()
+    if row is None:
+        db.add(
+            NeedRecord(
+                id=f"need-{circle_id}-{need.member_id}"[:64],
+                circle_id=circle_id,
+                member_id=need.member_id,
+                need_json=payload,
+                source=source,
+            )
+        )
+    else:
+        row.need_json, row.source = payload, source
+    db.flush()
+
+
+def list_needs(db: Session, circle_id: str) -> list[NeedExtraction]:
+    rows = db.scalars(
+        select(NeedRecord).where(NeedRecord.circle_id == circle_id).order_by(NeedRecord.member_id)
+    ).all()
+    return [NeedExtraction.model_validate_json(r.need_json) for r in rows]
+
+
+def member_profiles(db: Session, circle_id: str) -> list[MemberProfile]:
+    """Fair-order inputs: each active member with their need and P(late)."""
+    needs = {n.member_id: n for n in list_needs(db, circle_id)}
+    scores = reliability_scores(db, circle_id)
+    return [
+        MemberProfile(
+            member=MemberSnapshot(
+                member_id=MemberId(m.member_id),
+                display_name=m.name,
+                role=Role.ORGANISER if m.is_organiser else Role.MEMBER,
+                locale="ar-EG" if m.locale == "ar-EG" else "en",
+            ),
+            need=needs.get(MemberId(m.member_id)),
+            reliability_p_late=scores[MemberId(m.member_id)].p_late,
+        )
+        for m in active_members(db, circle_id)
+    ]
+
+
+def slot_dates(db: Session, circle_id: str) -> list[SlotDate]:
+    """One payout slot per cycle: slot_index is the cycle index, the date its due date."""
+    cycles = db.scalars(
+        select(Cycle).where(Cycle.circle_id == circle_id).order_by(Cycle.cycle_index)
+    ).all()
+    return [SlotDate(slot_index=c.cycle_index, payout_date=c.due_date) for c in cycles]
+
+
+def _proposal_hash(proposal: OrderProposal) -> str:
+    order = [(a.slot_index, a.member_id) for a in proposal.assignments]
+    return hashlib.sha256(json.dumps([proposal.seed, order]).encode()).hexdigest()
+
+
+def save_proposal(db: Session, circle_id: str, proposal: OrderProposal) -> None:
+    """Make this the circle's current proposal. Approvals of an older, different
+    proposal stop counting, because each approval is tied to a proposal hash."""
+    digest = _proposal_hash(proposal)
+    row = db.get(OrderProposalRecord, circle_id)
+    if row is None:
+        db.add(
+            OrderProposalRecord(
+                circle_id=circle_id, proposal_hash=digest, proposal_json=proposal.model_dump_json()
+            )
+        )
+    else:
+        row.proposal_hash, row.proposal_json = digest, proposal.model_dump_json()
+    db.flush()
+
+
+def approve_order(db: Session, circle_id: str, member_id: str) -> OrderProposal:
+    """Record one member's approval of the current proposal (approving twice is a no-op).
+
+    When every active member has approved, the order is applied: seats get their slot
+    and each cycle its recipient. Raises LookupError if nothing was proposed yet.
+    """
+    row = db.get(OrderProposalRecord, circle_id)
+    if row is None:
+        raise LookupError("no order has been proposed yet")
+    already = db.scalars(
+        select(OrderApproval).where(
+            OrderApproval.circle_id == circle_id,
+            OrderApproval.member_id == member_id,
+            OrderApproval.proposal_hash == row.proposal_hash,
+        )
+    ).first()
+    if already is None:
+        db.add(
+            OrderApproval(
+                id=f"oa-{row.proposal_hash[:16]}-{member_id}"[:64],
+                circle_id=circle_id,
+                member_id=member_id,
+                proposal_hash=row.proposal_hash,
+            )
+        )
+        db.flush()
+    proposal = OrderProposal.model_validate_json(row.proposal_json)
+    approved = set(
+        db.scalars(
+            select(OrderApproval.member_id).where(
+                OrderApproval.circle_id == circle_id,
+                OrderApproval.proposal_hash == row.proposal_hash,
+            )
+        ).all()
+    )
+    seats = active_members(db, circle_id)
+    if seats and all(m.member_id in approved for m in seats):
+        slot_of = {a.member_id: a.slot_index for a in proposal.assignments}
+        for m in seats:
+            m.slot_index = slot_of.get(MemberId(m.member_id))
+        recipient = {a.slot_index: a.member_id for a in proposal.assignments}
+        for c in db.scalars(select(Cycle).where(Cycle.circle_id == circle_id)).all():
+            c.payout_member_id = recipient.get(c.cycle_index)
+        db.flush()
+    return proposal
